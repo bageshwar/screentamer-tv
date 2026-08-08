@@ -11,3 +11,5 @@ agent/local.properties
 *.apk
 session-*.md
 art/options/
+evidence/
+**/evidence/

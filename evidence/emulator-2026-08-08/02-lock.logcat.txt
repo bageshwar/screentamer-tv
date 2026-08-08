@@ -1,2 +1,0 @@
-08-08 07:41:30.421  1239  1609 I AgentService: command: instant lockdown
-08-08 07:41:30.432  1239  1239 I LockOverlay: lock overlay shown

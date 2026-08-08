@@ -1,2 +1,0 @@
-08-08 07:42:25.330  1239  1609 I AgentService: Curfew is active — screen time is paused
-08-08 07:42:25.343  1239  1239 I LockOverlay: lock overlay shown
