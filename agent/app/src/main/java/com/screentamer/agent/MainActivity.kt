@@ -16,6 +16,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.screentamer.agent.core.AdbClient
+import com.screentamer.agent.http.MdnsAdvertiser
 import com.screentamer.agent.overlay.LockOverlay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -167,6 +168,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderStatus() {
+        scope.launch {
+            val url = withContext(Dispatchers.IO) {
+                val port = Prefs.serverPort(this@MainActivity)
+                val host = MdnsAdvertiser(this@MainActivity).hostname()
+                if (host != null) "http://$host.local:$port" else "http://<this-device>:$port"
+            }
+            renderStatus(url)
+        }
+    }
+
+    private fun renderStatus(dashboardUrl: String) {
         val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val running = am.runningAppProcesses?.any { it.processName == packageName && it.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED } == true
 
@@ -207,7 +219,7 @@ class MainActivity : AppCompatActivity() {
             if (overlayGranted) ok else bad
         )
         line("Server: ${Prefs.serverUrl(this).ifBlank { "<not set>" }}")
-        line("Dashboard: http://<this-device>:${Prefs.serverPort(this)}")
+        line("Dashboard: $dashboardUrl")
         line("Device ID: ${Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"}")
         tvStatus.text = sp
 

@@ -18,6 +18,7 @@ import com.screentamer.agent.data.KnownApps
 import com.screentamer.agent.data.Protocol
 import com.screentamer.agent.http.DeviceStore
 import com.screentamer.agent.http.EmbeddedServer
+import com.screentamer.agent.http.MdnsAdvertiser
 import com.screentamer.agent.overlay.LockOverlay
 import com.screentamer.agent.tracking.UsageTracker
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -84,6 +85,7 @@ class AgentService : Service() {
     private lateinit var overlay: LockOverlay
     private lateinit var store: DeviceStore
     private lateinit var server: EmbeddedServer
+    private lateinit var mdns: MdnsAdvertiser
     private val policy = PolicyManager()
 
     @Volatile
@@ -193,6 +195,8 @@ class AgentService : Service() {
         })
         server.start()
         Log.i(TAG, "embedded server on :${Prefs.serverPort(this)}")
+        mdns = MdnsAdvertiser(this)
+        mdns.start(Prefs.serverPort(this), "ScreenTamer ${Prefs.deviceName(this)}")
 
         socket = AgentSocket(this, object : AgentSocket.Listener {
             override fun onConnected() {
@@ -285,6 +289,7 @@ class AgentService : Service() {
         Log.i(TAG, "onDestroy: stopping loop, relay, embedded server, overlay")
         loopJob?.cancel()
         socket.stop()
+        mdns.stop()
         server.stop()
         overlay.hide()
         super.onDestroy()

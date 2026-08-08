@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const { Bonjour } = require('bonjour-service');
 const P = require('./lib/protocol');
 const { loadConfig, makeStore, toDateKey } = require('./lib/store');
 
@@ -31,6 +32,7 @@ console.log('============================================');
 console.log('  ScreenTamer parent server');
 console.log('--------------------------------------------');
 console.log(`  Dashboard:  http://<this-host>:${config.port}/`);
+console.log(`  mDNS:       http://screentamer.local:${config.port}/`);
 console.log(`  Agent URL:  ws://<this-host>:${config.port}/ws`);
 console.log(`  Device token:     ${config.deviceToken}`);
 console.log(`  Parent password:  ${config.parentPassword}`);
@@ -386,3 +388,21 @@ function normalizePolicy(policy) {
 server.listen(config.port, () => {
   console.log(`Listening on :${config.port}`);
 });
+
+// ---------------------------------------------------------------------------
+// mDNS/Bonjour: advertise a friendly name so users can open the dashboard
+// at http://screentamer.local:<port>/ instead of remembering an IP address.
+// ---------------------------------------------------------------------------
+
+try {
+  const bonjour = new Bonjour();
+  bonjour.publish({
+    name: 'screentamer',
+    type: 'http',
+    port: config.port,
+    host: 'screentamer',
+  });
+  console.log(`mDNS published: screentamer.local -> http://screentamer.local:${config.port}/`);
+} catch (e) {
+  console.log(`mDNS unavailable (dashboard still reachable by IP): ${e.message}`);
+}
