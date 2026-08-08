@@ -20,8 +20,8 @@ android {
         applicationId = "com.screentamer.agent"
         minSdk = 23
         targetSdk = 33
-        versionCode = 3
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "1.0.0"
     }
 
     buildFeatures {

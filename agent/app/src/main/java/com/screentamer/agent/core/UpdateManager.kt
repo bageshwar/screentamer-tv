@@ -102,4 +102,51 @@ object UpdateManager {
             }
         })
     }
+
+    fun downloadAndInstallApk(context: Context, onProgress: (String) -> Unit, onError: (String) -> Unit) {
+        if (latestApkUrl.isEmpty()) {
+            onError("No download URL found")
+            return
+        }
+        val request = Request.Builder().url(latestApkUrl).build()
+        client.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) {
+                onError(e.message ?: "Download failed")
+            }
+
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.use {
+                    if (!response.isSuccessful) {
+                        onError("Server returned code ${response.code}")
+                        return
+                    }
+                    try {
+                        val file = java.io.File(context.cacheDir, "update.apk")
+                        response.body?.byteStream()?.use { input ->
+                            file.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        
+                        // Launch installer
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            file
+                        )
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                        onProgress("Installing...")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error installing update APK", e)
+                        onError(e.message ?: "Installation failed")
+                    }
+                }
+            }
+        })
+    }
 }

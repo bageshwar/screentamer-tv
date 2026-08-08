@@ -138,18 +138,39 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, DashboardActivity::class.java))
         }
         btnCheckUpdates.setOnClickListener {
-            btnCheckUpdates.isEnabled = false
-            btnCheckUpdates.text = "Checking..."
-            com.screentamer.agent.core.UpdateManager.checkForUpdates { hasUpdate ->
-                runOnUiThread {
-                    btnCheckUpdates.isEnabled = true
-                    btnCheckUpdates.text = "Check for Updates"
-                    if (hasUpdate) {
-                        toast("New update available: ${com.screentamer.agent.core.UpdateManager.latestVersionName}")
-                    } else {
-                        toast("App is up to date")
+            if (com.screentamer.agent.core.UpdateManager.hasUpdate) {
+                btnCheckUpdates.isEnabled = false
+                btnCheckUpdates.text = "Downloading..."
+                com.screentamer.agent.core.UpdateManager.downloadAndInstallApk(
+                    this@MainActivity,
+                    onProgress = { status ->
+                        runOnUiThread {
+                            btnCheckUpdates.text = status
+                        }
+                    },
+                    onError = { err ->
+                        runOnUiThread {
+                            btnCheckUpdates.isEnabled = true
+                            btnCheckUpdates.text = "Install Update"
+                            toast("Update failed: $err")
+                        }
                     }
-                    renderStatus()
+                )
+            } else {
+                btnCheckUpdates.isEnabled = false
+                btnCheckUpdates.text = "Checking..."
+                com.screentamer.agent.core.UpdateManager.checkForUpdates { hasUpdate ->
+                    runOnUiThread {
+                        btnCheckUpdates.isEnabled = true
+                        if (hasUpdate) {
+                            btnCheckUpdates.text = "Install Update"
+                            toast("New update available: ${com.screentamer.agent.core.UpdateManager.latestVersionName}")
+                        } else {
+                            btnCheckUpdates.text = "Check for Updates"
+                            toast("App is up to date")
+                        }
+                        renderStatus()
+                    }
                 }
             }
         }
@@ -263,6 +284,11 @@ class MainActivity : AppCompatActivity() {
         btnStop.background = ContextCompat.getDrawable(
             this,
             if (running) R.drawable.btn_primary_tv else R.drawable.btn_tv
+        )
+        btnCheckUpdates.text = if (com.screentamer.agent.core.UpdateManager.hasUpdate) "Install Update" else "Check for Updates"
+        btnCheckUpdates.background = ContextCompat.getDrawable(
+            this,
+            if (com.screentamer.agent.core.UpdateManager.hasUpdate) R.drawable.btn_primary_tv else R.drawable.btn_tv
         )
         Log.i(TAG, "status rendered: service ${if (running) "running" else "stopped"}")
     }
