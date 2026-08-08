@@ -8,8 +8,12 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            Log.i("BootReceiver", "boot completed — starting agent service")
+            Log.i(TAG, "boot completed — starting agent service (auto-start)")
             AgentService.start(context)
         }
+    }
+
+    companion object {
+        private const val TAG = "ScreenTamer/BootReceiver"
     }
 }

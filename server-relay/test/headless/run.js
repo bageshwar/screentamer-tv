@@ -1,14 +1,16 @@
 // Headless validation of the parent dashboard: loads it in a real browser
-// (cached Playwright Chromium), logs in, and asserts the live devices view
-// and Reports section render real data with no JS errors.
+// (cached Playwright Chromium), logs in, and asserts all three views render
+// real data with no JS errors. Screenshots land in test/headless/artifacts/.
 //
 // Run with: npm run test:headless   (from server-relay/)
-// Artifacts (screenshots) land in test/headless/artifacts/.
+// For pure design iteration without any device/relay, target the mock dev
+// server instead:
+//   DASH_URL=http://127.0.0.1:4000 DASH_PASSWORD=demo npm run test:headless
 //
 // Requirements:
 //   - a ScreenTamer server reachable at DASH_URL (relay at 127.0.0.1:3000 by
-//     default; set DASH_URL=http://127.0.0.1:8080 for the agent's embedded
-//     server via adb forward, with DASH_PASSWORD=<dashboard password>)
+//     default; dev server at 127.0.0.1:4000; agent embedded server via adb
+//     forward with DASH_PASSWORD set)
 //   - data/config.json exists when targeting the relay (generated on first
 //     relay run); DASH_PASSWORD overrides it
 //   - Chromium available. Resolved in this order:
@@ -74,19 +76,20 @@ async function main() {
   const browser = await chromium.launch({ headless: true, executablePath: exe });
   const page = await browser.newPage({ viewport: { width: 1280, height: 2000 } });
   const jsErrors = [];
-  page.on('pageerror', (e) => jsErrors.push(`pageerror: ${e.message}`));
+  page.on('pageerror', (e) => jsErrors.push(`pageerror: ${e.message} @ ${(e.stack||'').split('\n').slice(0,4).join(' < ')}`));
   page.on('console', (m) => { if (m.type() === 'error') jsErrors.push(`console: ${m.text()}`); });
 
-  await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+  await page.goto(BASE + '/', { waitUntil: 'load' });
   await page.evaluate((pw) => localStorage.setItem(PASSWORD_KEY, pw), config.parentPassword);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
 
-  // Wait for live WS state and the reports fetch to both land.
-  await page.waitForFunction(() => document.querySelectorAll('#devices .card').length > 0, { timeout: 15000 });
+  // Wait for state + reports fetch to land.
+  await page.waitForFunction(() => document.querySelectorAll('#deviceSelect option').length > 0, { timeout: 15000 });
   await page.waitForFunction(() => document.querySelector('#statWeek')?.textContent !== '—', { timeout: 15000 });
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1200);
 
-  const checks = await page.evaluate(() => {
+  // ---------------------------------------------------------------- Report
+  const report = await page.evaluate(() => {
     const canvas = document.querySelector('#dailyChart');
     let painted = 0;
     if (canvas) {
@@ -94,85 +97,163 @@ async function main() {
       for (let i = 3; i < data.length; i += 4) if (data[i] > 0) painted++;
     }
     return {
-      deviceCards: document.querySelectorAll('#devices .card').length,
+      reportVisible: !document.querySelector('#view-report')?.classList.contains('hidden'),
+      activityHidden: document.querySelector('#view-activity')?.classList.contains('hidden'),
+      settingsHidden: document.querySelector('#view-settings')?.classList.contains('hidden'),
+      activeTab: document.querySelector('.tab.active')?.dataset.view,
+      devices: document.querySelectorAll('#deviceSelect option').length,
       conn: document.querySelector('#connText')?.textContent || '',
+      statusName: document.querySelector('#statusName')?.textContent,
+      statusMeta: document.querySelector('#statusMeta')?.textContent,
+      nowPlaying: document.querySelector('#nowPlaying')?.textContent.trim(),
+      dayTitle: document.querySelector('#reportDayTitle')?.textContent,
+      daySub: document.querySelector('#reportDaySub')?.textContent,
       statToday: document.querySelector('#statToday')?.textContent,
       statWeek: document.querySelector('#statWeek')?.textContent,
       statAvg: document.querySelector('#statAvg')?.textContent,
-      dayLabel: document.querySelector('#appDayLabel')?.textContent,
       appRows: document.querySelectorAll('#appBreakdown .app-row').length,
+      appIcons: document.querySelectorAll('#appBreakdown .app-row .app-icon').length,
       chartPainted: painted,
-      reportsHidden: document.querySelector('#reports')?.classList.contains('hidden'),
+      badges: document.querySelector('#statusBadges')?.textContent,
     };
   });
 
-  check('devices render', checks.deviceCards > 0);
-  check('dashboard data connected (on-demand fetch)', checks.conn.includes('connected'));
-  check('today stat populated', !!checks.statToday && checks.statToday !== '—');
-  check('7-day stat populated', !!checks.statWeek && checks.statWeek !== '—');
-  check('daily avg populated', !!checks.statAvg && checks.statAvg !== '—');
-  check('daily chart painted', checks.chartPainted > 1000);
-  // Today may legitimately be empty (device idle or first day); rows are
-  // asserted on a data-bearing day after navigation below.
-  check('per-app breakdown renders', checks.appRows > 0 || (await page.$('#appBreakdown .muted')) !== null);
-  check('day label set', !!checks.dayLabel);
-  check('reports section visible', checks.reportsHidden === false);
+  check('report is the default view', report.reportVisible === true);
+  check('activity + settings hidden by default', report.activityHidden === true && report.settingsHidden === true);
+  check('active tab is Report', report.activeTab === 'report');
+  check('device selector populated', report.devices > 0);
+  check('dashboard data connected (on-demand fetch)', report.conn.includes('connected'));
+  check('status strip shows device name', !!report.statusName && report.statusName !== '—');
+  check('status strip shows model / last seen', !!report.statusMeta && report.statusMeta.includes('Fire OS'));
+  check('now playing rendered', report.nowPlaying.length > 0);
+  check('day title set', ['Today\u2019s report', 'Today\'s report'].includes(report.dayTitle));
+  check('day subtitle set', !!report.daySub);
+  check('today stat populated', !!report.statToday && report.statToday !== '—');
+  check('7-day stat populated', !!report.statWeek && report.statWeek !== '—');
+  check('daily avg populated', !!report.statAvg && report.statAvg !== '—');
+  check('daily chart painted', report.chartPainted > 1000);
+  check('per-app rows render', report.appRows > 0);
+  check('app icons rendered (img or avatar)', report.appIcons > 0);
+  check('device badges shown', report.badges.length > 0);
 
-  // Interaction: day navigation changes the breakdown label and shows real
-  // app rows for a day that has data.
-  const before = checks.dayLabel;
+  // Day navigation: stepping back changes the report to that day.
+  const titleBefore = report.dayTitle;
+  const subBefore = report.daySub;
   await page.click('#dayPrev');
-  await page.waitForTimeout(200);
-  const after = await page.$eval('#appDayLabel', (el) => el.textContent);
-  check('day navigation works', !!before && before !== after);
-  const rowsAfterNav = await page.$$eval('#appBreakdown .app-row', (els) => els.length);
-  if (rowsAfterNav === 0) {
-    // If the previous day is empty too, step further back until a data day
-    // appears (capped at the window size)…
-    let rows = rowsAfterNav;
-    for (let i = 0; i < 12 && rows === 0; i++) {
-      await page.click('#dayPrev');
-      await page.waitForTimeout(150);
-      rows = await page.$$eval('#appBreakdown .app-row', (els) => els.length);
-    }
-    if (rows === 0) {
-      // …then step forward back to today: a freshly-paired device only has
-      // data on the current day, so this is the authoritative data-day check.
-      for (let i = 0; i < 14; i++) {
-        await page.click('#dayNext');
-        await page.waitForTimeout(150);
-        rows = await page.$$eval('#appBreakdown .app-row', (els) => els.length);
-        if (rows > 0) break;
-      }
-    }
-    check('per-app rows render for a data day', rows > 0);
-  } else {
-    check('per-app rows render for a data day', true);
-  }
+  await page.waitForTimeout(250);
+  const afterNav = await page.evaluate(() => ({
+    title: document.querySelector('#reportDayTitle')?.textContent,
+    sub: document.querySelector('#reportDaySub')?.textContent,
+    label: document.querySelector('#appDayLabel')?.textContent,
+    rows: document.querySelectorAll('#appBreakdown .app-row').length,
+  }));
+  check('day nav switches the report day', afterNav.sub !== subBefore);
+  check('day nav updates the day title', afterNav.title !== titleBefore || afterNav.label.includes('(yesterday)'));
+  await page.screenshot({ path: path.join(ARTIFACTS, '01-report-previous-day.png') });
 
-  // Human-readable render summary (textual evidence).
-  const summary = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll('#appBreakdown .app-row')].map((r) => ({
-      name: r.querySelector('.app-name')?.textContent,
-      ms: r.querySelector('.app-ms')?.textContent,
-    }));
+  // Back to today.
+  await page.click('#dayToday');
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: path.join(ARTIFACTS, '02-report-today.png') });
+
+  // -------------------------------------------------------------- Activity
+  await page.click('.tab[data-view="activity"]');
+  await page.waitForTimeout(300);
+  const activity = await page.evaluate(() => ({
+    visible: !document.querySelector('#view-activity')?.classList.contains('hidden'),
+    logEntries: document.querySelectorAll('#activityLog div').length,
+    logText: document.querySelector('#activityLog')?.textContent.trim(),
+    health: document.querySelector('#healthBox')?.textContent.trim(),
+    statusName: document.querySelector('#actName')?.textContent,
+    nowPlaying: document.querySelector('#actNowPlaying')?.textContent.trim(),
+  }));
+  check('activity view opens', activity.visible === true);
+  check('activity log has entries', activity.logEntries > 0);
+  check('activity log has timestamps + messages', (activity.logText || '').includes(':'));
+  // Health box must be populated; on real agents health can be "not reported
+  // yet" until the first tick, so require non-empty, not a specific phrase.
+  check('health observability rendered', !!activity.health && activity.health.trim().length > 0);
+  check('activity status strip shows device', !!activity.statusName && activity.statusName !== '—');
+  check('activity now playing shown', activity.nowPlaying.length > 0);
+  await page.screenshot({ path: path.join(ARTIFACTS, '03-activity.png') });
+
+  // -------------------------------------------------------------- Settings
+  await page.click('.tab[data-view="settings"]');
+  await page.waitForTimeout(300);
+  const settings = await page.evaluate(() => ({
+    visible: !document.querySelector('#view-settings')?.classList.contains('hidden'),
+    limitValue: document.querySelector('[data-policy="limit"]')?.value,
+    curfewOn: document.querySelector('[data-policy="curfewOn"]')?.checked,
+    curfewStart: document.querySelector('[data-policy="curfewStart"]')?.value,
+    stopOptions: document.querySelectorAll('#stopSelect option').length,
+    chips: document.querySelectorAll('#blacklistChips .chip').length,
+    deviceInfo: document.querySelector('#deviceInfo')?.textContent.trim(),
+    controls: document.querySelectorAll('#view-settings [data-act]').length,
+    statusName: document.querySelector('#setName')?.textContent,
+  }));
+  check('settings view opens', settings.visible === true);
+  check('daily limit pre-filled', !!settings.limitValue && settings.limitValue !== '');
+  check('curfew controls rendered', typeof settings.curfewOn === 'boolean');
+  check('force-stop list populated', settings.stopOptions > 1);
+  check('blacklist chips rendered', settings.chips >= 0);
+  check('recent-app quick-add chips present', await page.$('#blacklistQuick .chip.quick') !== null);
+  check('device info shown', !!settings.deviceInfo && settings.deviceInfo.includes('Fire'));
+  check('control buttons present', settings.controls >= 5);
+  check('settings status strip shows device', !!settings.statusName && settings.statusName !== '—');
+  await page.screenshot({ path: path.join(ARTIFACTS, '04-settings.png') });
+
+  // TV mode smoke: ?tv=1 must still render.
+  await page.goto(BASE + '/?tv=1', { waitUntil: 'load' });
+  await page.evaluate((pw) => localStorage.setItem(PASSWORD_KEY, pw), config.parentPassword);
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('#statusName')?.textContent !== '—', { timeout: 15000 });
+  check('TV mode class applied', await page.evaluate(() => document.body.classList.contains('tv-mode')));
+
+  // D-pad focus proof: every interactive element must show a strong ring.
+  await page.focus('#deviceSelect');
+  await page.waitForTimeout(250);
+  const focus = await page.evaluate(() => {
+    const el = document.querySelector('#deviceSelect');
+    const s = getComputedStyle(el);
+    return { outlineWidth: s.outlineWidth, outlineColor: s.outlineColor, scale: s.transform };
+  });
+  check('TV focus ring on device select', parseFloat(focus.outlineWidth) >= 4);
+  check('TV focus ring is visible color', focus.outlineColor !== 'rgba(0, 0, 0, 0)');
+  await page.screenshot({ path: path.join(ARTIFACTS, '09-tv-focus.png') });
+  await page.focus('#logoutBtn');
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: path.join(ARTIFACTS, '05-tv-mode.png') });
+
+  // ---------------------------------------------------------------- Phone
+  // Same app, phone viewport: thumb-first layout must hold together.
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  await phone.goto(BASE + '/', { waitUntil: 'load' });
+  await phone.evaluate((pw) => localStorage.setItem(PASSWORD_KEY, pw), config.parentPassword);
+  await phone.reload({ waitUntil: 'load' });
+  await phone.waitForFunction(() => document.querySelector('#statWeek')?.textContent !== '—', { timeout: 15000 });
+  await phone.waitForTimeout(800);
+  const touch = await phone.evaluate(() => {
+    const dayBtn = getComputedStyle(document.querySelector('.day-nav .btn'));
+    const tab = getComputedStyle(document.querySelector('.tab'));
     return {
-      today: document.querySelector('#statToday')?.textContent,
-      yesterday: document.querySelector('#statYesterday')?.textContent,
-      week: document.querySelector('#statWeek')?.textContent,
-      avg: document.querySelector('#statAvg')?.textContent,
-      range: document.querySelector('#reportRange')?.textContent,
-      day: document.querySelector('#appDayLabel')?.textContent,
-      rows,
+      dayMinHeight: parseFloat(dayBtn.minHeight),
+      tabFullWidth: tab.flexGrow === '1',
+      statsCols: getComputedStyle(document.querySelector('.stats-row')).gridTemplateColumns.split(' ').length,
+      reportVisible: !document.querySelector('#view-report')?.classList.contains('hidden'),
     };
   });
-  console.log('\nrender summary:');
-  console.log(JSON.stringify(summary, null, 2));
-
-  await page.screenshot({ path: path.join(ARTIFACTS, 'reports.png'), fullPage: false });
-  await page.evaluate(() => document.querySelector('#devices').scrollIntoView({ block: 'start' }));
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: path.join(ARTIFACTS, 'devices.png'), fullPage: false });
+  check('phone: day-nav touch targets >= 44px', touch.dayMinHeight >= 44);
+  check('phone: tabs stretch full width', touch.tabFullWidth === true);
+  check('phone: stats grid is 2 columns', touch.statsCols <= 2);
+  check('phone: report renders', touch.reportVisible === true);
+  await phone.screenshot({ path: path.join(ARTIFACTS, '06-phone-report.png'), fullPage: true });
+  await phone.click('.tab[data-view="activity"]');
+  await phone.waitForTimeout(300);
+  await phone.screenshot({ path: path.join(ARTIFACTS, '07-phone-activity.png'), fullPage: true });
+  await phone.click('.tab[data-view="settings"]');
+  await phone.waitForTimeout(300);
+  await phone.screenshot({ path: path.join(ARTIFACTS, '08-phone-settings.png'), fullPage: true });
+  await phone.close();
 
   check('no JS errors', jsErrors.length === 0);
   if (jsErrors.length) jsErrors.forEach((e) => console.log('  ' + e));

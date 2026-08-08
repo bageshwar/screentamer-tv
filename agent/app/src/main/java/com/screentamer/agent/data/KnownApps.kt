@@ -10,6 +10,8 @@ object KnownApps {
         "com.google.android.apps.youtube.tvunplugged" to "YouTube TV",
         "com.netflix.ninja" to "Netflix",
         "com.amazon.amazonvideo.livingroom" to "Prime Video",
+        "com.amazon.venezia" to "Prime Video",
+        "com.amazon.avod.thirdpartyclient" to "Prime Video",
         "com.disney.disneyplus" to "Disney+",
         "com.hulu.livingroomplus" to "Hulu",
         "com.hbomax" to "Max",

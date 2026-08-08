@@ -43,7 +43,7 @@ import java.util.Calendar
 class AgentService : Service() {
 
     companion object {
-        private const val TAG = "AgentService"
+        private const val TAG = "ScreenTamer/AgentService"
         private const val CHANNEL_ID = "screentamer"
         private const val NOTIF_ID = 1
         private const val TRACK_INTERVAL_MS = 30_000L
@@ -99,6 +99,7 @@ class AgentService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.i(TAG, "agent service creating (device $deviceId, ${Build.MODEL}, Android ${Build.VERSION.RELEASE})")
         startForeground(NOTIF_ID, buildNotification())
         com.screentamer.agent.core.AdbConfigProvider.get = {
             com.screentamer.agent.core.AdbConfig(
@@ -144,9 +145,32 @@ class AgentService : Service() {
             }
 
             override fun command(type: String, pkg: String?): String? {
-                if (type !in commandTypes) return "unknown command $type"
+                if (type !in commandTypes) {
+                    Log.w(TAG, "unknown dashboard command: $type")
+                    return "unknown command $type"
+                }
+                log("command from dashboard: $type${pkg?.let { " ($it)" } ?: ""}")
                 scope.launch { executeCommand(type, pkg) }
                 return null
+            }
+
+            override fun icon(pkg: String): ByteArray? = try {
+                val icon = packageManager.getApplicationIcon(pkg)
+                val bitmap = when (icon) {
+                    is android.graphics.drawable.BitmapDrawable -> icon.bitmap
+                    else -> android.graphics.Bitmap.createBitmap(
+                        icon.intrinsicWidth, icon.intrinsicHeight, android.graphics.Bitmap.Config.ARGB_8888
+                    ).also {
+                        val canvas = android.graphics.Canvas(it)
+                        icon.setBounds(0, 0, it.width, it.height)
+                        icon.draw(canvas)
+                    }
+                }
+                val out = java.io.ByteArrayOutputStream()
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                out.toByteArray()
+            } catch (e: Exception) {
+                null
             }
 
             override fun assets(): EmbeddedServer.Assets = object : EmbeddedServer.Assets {
@@ -161,6 +185,8 @@ class AgentService : Service() {
                     "html" -> "text/html; charset=utf-8"
                     "js" -> "text/javascript; charset=utf-8"
                     "css" -> "text/css; charset=utf-8"
+                    "svg" -> "image/svg+xml"
+                    "png" -> "image/png"
                     else -> "application/octet-stream"
                 }
             }
@@ -222,6 +248,7 @@ class AgentService : Service() {
             .put("log", store.readLog())
             .put("health", store.health())
             .put("serverPort", Prefs.serverPort(this))
+            .put("iconEndpoint", true)
         return JSONObject()
             .put("defaultPolicy", policy.defaultPolicy())
             .put("devices", JSONObject().put(deviceId, device))
@@ -234,6 +261,9 @@ class AgentService : Service() {
                 Log.i(TAG, "onStartCommand: STOP")
                 stopSelf()
                 return START_NOT_STICKY
+            }
+            ACTION_START -> {
+                Log.i(TAG, "onStartCommand: START (app launch / watchdog / boot)")
             }
             ACTION_RECONFIGURE -> {
                 Log.i(TAG, "onStartCommand: RECONFIGURE (relay url: ${Prefs.serverUrl(this).ifBlank { "<blank>" }})")
@@ -278,12 +308,11 @@ class AgentService : Service() {
     }
 
     private suspend fun tick() {
-        Log.i(TAG, "tick")
         try {
             val apps = tracker.usageToday()
             val totalMs = apps.values.sum()
             currentApp = tracker.foregroundApp()
-            Log.i(TAG, "tick: totalMs=$totalMs apps=${apps.size} current=$currentApp")
+            Log.i(TAG, "tick: totalMs=$totalMs apps=${apps.size} current=${currentApp?.let { KnownApps.displayName(it) } ?: "—"} locked=$locked")
 
             // 1. Enforcement
             enforce(policy, apps, totalMs)
@@ -361,6 +390,7 @@ class AgentService : Service() {
                 version = Build.VERSION.RELEASE,
             )
         )
+        Log.i(TAG, "hello sent (name=${Prefs.deviceName(this)}, token=${if (Prefs.pairingToken(this).isBlank()) "blank" else "set"})")
     }
 
     private fun handleRelayMessage(type: String, payload: JSONObject) {
@@ -441,12 +471,12 @@ class AgentService : Service() {
             nm.createNotificationChannel(channel)
         }
         val openIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+            this, 0, Intent(this, DashboardActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_launcher)
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(getString(R.string.notif_title))
                 .setContentText(getString(R.string.notif_text))
                 .setContentIntent(openIntent)
@@ -455,7 +485,7 @@ class AgentService : Service() {
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setSmallIcon(R.drawable.ic_launcher)
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(getString(R.string.notif_title))
                 .setContentText(getString(R.string.notif_text))
                 .setContentIntent(openIntent)

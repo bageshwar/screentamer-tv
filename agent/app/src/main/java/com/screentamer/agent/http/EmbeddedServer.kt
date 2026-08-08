@@ -26,6 +26,8 @@ class EmbeddedServer(
         fun history(days: Int): JSONObject
         fun config(policy: JSONObject): String?
         fun command(type: String, pkg: String?): String?
+        /** Real app icon (PNG bytes) for a package, or null when unknown. */
+        fun icon(pkg: String): ByteArray?
         fun assets(): Assets
     }
 
@@ -34,7 +36,7 @@ class EmbeddedServer(
         fun mime(name: String): String
     }
 
-    private val logTag = "EmbeddedServer"
+    private val logTag = "ScreenTamer/EmbeddedServer"
     private var serverSocket: ServerSocket? = null
     private val activeThreads = mutableSetOf<Thread>()
     @Volatile
@@ -137,12 +139,22 @@ class EmbeddedServer(
             if (!served) status = 404
         }
 
-        // Static dashboard
+        // Static dashboard (path maps 1:1 under assets/www/, subdirs preserved)
         if (method == "GET" && (path == "/" || path == "/index.html")) asset("index.html")
-        else if (method == "GET" && pathLower.startsWith("/static/")) asset(path.substringAfterLast('/'))
+        else if (method == "GET" && pathLower.startsWith("/static/")) asset(path.substringAfter("/static/"))
 
         // REST API
         else when {
+            method == "GET" && path == "/api/icon" -> {
+                val pkg = query.substringAfter("pkg=", "").substringBefore('&').trim()
+                if (pkg.isEmpty()) return json(400, JSONObject().put("ok", false).put("error", "pkg required"))
+                val bytes = handler.icon(pkg)
+                if (bytes == null) json(404, JSONObject().put("ok", false).put("error", "unknown package"))
+                else {
+                    status = 200
+                    sendBytes(out, bytes, "image/png")
+                }
+            }
             method == "POST" && path == "/api/login" -> {
                 val pw = bodyJson(body).optString("password")
                 if (handler.login(pw)) json(200, JSONObject().put("ok", true))
@@ -172,7 +184,7 @@ class EmbeddedServer(
             }
             else -> json(404, JSONObject().put("ok", false).put("error", "not found"))
         }
-        Log.i(logTag, "[http] $method $path -> $status (${System.currentTimeMillis() - started}ms)")
+        Log.i(logTag, "[http] ${c.inetAddress?.hostAddress ?: "?"} $method $path -> $status (${System.currentTimeMillis() - started}ms)")
     }
 
     private fun authed(query: String, headers: Map<String, String>, body: JSONObject = JSONObject()): Boolean {
@@ -203,6 +215,11 @@ class EmbeddedServer(
             out.write(data)
         }
         return true
+    }
+
+    private fun sendBytes(out: java.io.OutputStream, data: ByteArray, contentType: String) {
+        out.write("HTTP/1.1 200 OK\r\nContent-Type: $contentType\r\nContent-Length: ${data.size}\r\nCache-Control: public, max-age=86400\r\nConnection: close\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
+        out.write(data)
     }
 
     private fun sendJson(out: java.io.OutputStream, code: Int, obj: JSONObject) {

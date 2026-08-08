@@ -2,6 +2,13 @@ plugins {
     id("com.android.application")
 }
 
+fun gitHash(): String = try {
+    ProcessBuilder("git", "rev-parse", "--short=7", "HEAD")
+        .start().inputStream.bufferedReader().readLine().trim()
+} catch (e: Exception) {
+    "unknown"
+}
+
 android {
     namespace = "com.screentamer.agent"
     compileSdk = 37
@@ -11,7 +18,11 @@ android {
         minSdk = 23
         targetSdk = 33
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.1.${gitHash()}"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

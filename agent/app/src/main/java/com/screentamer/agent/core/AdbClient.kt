@@ -36,7 +36,7 @@ import java.security.spec.X509EncodedKeySpec
 class AdbClient(private val context: Context) {
 
     companion object {
-        private const val TAG = "AdbClient"
+        private const val TAG = "ScreenTamer/AdbClient"
         private const val DEFAULT_TIMEOUT_MS = 8000
 
         // ADB auth message arg0 values
@@ -74,6 +74,7 @@ class AdbClient(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.w(TAG, "adb shell failed: $command -> ${e.message}")
+            Log.d(TAG, "adb shell failure detail", e)
             false
         } finally {
             closeSocket()
@@ -91,6 +92,7 @@ class AdbClient(private val context: Context) {
     private fun connect(): Socket {
         socket?.let { if (!it.isClosed && it.isConnected) return it }
         val cfg = AdbConfigProvider.get(context)
+        Log.i(TAG, "adb connecting (${cfg.mode}, ${cfg.host}:${cfg.port}${if (cfg.transportId.isNotBlank()) " transport=${cfg.transportId}" else ""})")
         val s = Socket()
         s.connect(InetSocketAddress(cfg.host, cfg.port), DEFAULT_TIMEOUT_MS)
         s.soTimeout = DEFAULT_TIMEOUT_MS

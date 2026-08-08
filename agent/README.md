@@ -121,14 +121,26 @@ Commands: `pause` → keyevent 127, `play` → 126, `home` → 3, `stopApp <pkg>
 
 ## Logging
 
+All tags are prefixed `ScreenTamer/` so `adb logcat -s ScreenTamer` captures
+the whole agent.
+
 | Tag | What |
 | --- | --- |
-| `AgentService` | ticks, enforcement, commands, logins, lifecycle |
-| `EmbeddedServer` | `[http] METHOD path -> status (ms)` per request |
-| `AgentSocket` | connects, failures, outgoing message types |
-| `AdbClient` | bridge handshake, shell failures |
-| `AgentAccessibility` | watchdog binds |
-| `BootReceiver` | boot-time service start |
+| `ScreenTamer/AgentService` | ticks, enforcement, commands, logins, lifecycle |
+| `ScreenTamer/EmbeddedServer` | `[http] <client-ip> METHOD path -> status (ms)` per request |
+| `ScreenTamer/AgentSocket` | connect attempts, reconnects, failures, message types |
+| `ScreenTamer/AdbClient` | connects, bridge handshake, shell failures |
+| `ScreenTamer/UsageTracker` | usage snapshots, missing PACKAGE_USAGE_STATS |
+| `ScreenTamer/DeviceStore` | persistence writes, sweeps, service-start bumps |
+| `ScreenTamer/LockOverlay` | overlay show/hide |
+| `ScreenTamer/Accessibility` | watchdog binds/unbinds |
+| `ScreenTamer/BootReceiver` | boot-time service start |
+| `ScreenTamer/MainActivity` | app opens, save/start/stop actions, adb self-test |
+| `ScreenTamer/Dashboard` | in-TV WebView dashboard activity (launcher; `?tv=1`) |
+
+The app icon opens the **settings screen** (`MainActivity`); "Open Dashboard
+on TV" opens the in-TV dashboard (`DashboardActivity`, `?tv=1`), which starts
+the agent and retries the WebView load until the embedded server answers.
 
 ## Testing on the emulator
 
@@ -140,6 +152,10 @@ adb shell "run-as com.screentamer.agent am startservice --user 0 \
 adb forward tcp:8080 tcp:8080
 curl -H "x-parent-password: <pw>" http://127.0.0.1:8080/api/state
 ```
+
+Opening the app (`am start`) auto-starts the agent service — no manual
+"Start Agent" needed; the accessibility watchdog + boot receiver keep it
+alive afterwards.
 
 The full E2E evidence suite runs against the embedded server with
 `DASH_URL=http://127.0.0.1:8080 DASH_PASSWORD=<pw>` (see

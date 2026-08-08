@@ -33,6 +33,17 @@ First run generates `data/config.json` (print the secrets once, on the console):
 - Agent relay URL: `ws://<server-ip>:3000/ws`
 - On each TV's agent app: set the relay URL + pairing token (the device token).
 
+## Design / dev loop (no device, no APK build)
+
+```bash
+npm run dev        # http://127.0.0.1:4000  (password: demo)
+```
+
+Serves the dashboard from `public/` against a generated mock dataset (three
+devices, 14 days of usage, realistic logs/health) with **hot reload** — edit
+anything under `public/` and the browser reloads automatically. `npm start`
+serves the same dashboard against real agents instead.
+
 ## REST API
 
 Auth: `POST` bodies carry `password`; `GET` endpoints are public on the relay
@@ -50,6 +61,10 @@ for both).
 | GET | `/` , `/static/*`, `/favicon.ico` | — | Dashboard assets |
 
 Commands: `pause`, `play`, `home`, `stopApp` (with `pkg`), `lock`, `unlock`.
+
+> `/api/icon?pkg=…` (real app icons) exists only on the agent's embedded
+> server. The relay and dev server 404 it, and the dashboard falls back to
+> bundled brand SVGs / letter avatars.
 
 Policy shape:
 
@@ -115,5 +130,16 @@ Target the agent's embedded server instead of the relay:
 adb forward tcp:8080 tcp:8080
 DASH_URL=http://127.0.0.1:8080 DASH_PASSWORD=<pw> npm run test:e2e
 ```
+
+Or iterate on design only, against mock data:
+
+```bash
+npm run dev                                   # mock server on :4000
+DASH_URL=http://127.0.0.1:4000 DASH_PASSWORD=demo npm run test:headless
+```
+
+The headless harness now covers all three clients — laptop view, phone
+viewport (touch-target checks) and `?tv=1` (D-pad focus-ring proof) — and
+writes screenshots to `test/headless/artifacts/`.
 
 E2E artifacts land in `evidence/e2e-<timestamp>/` at the repo root.

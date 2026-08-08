@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="11" fill="#0F337A"/>
+  <g clip-path="url(#fan)">
+    <ellipse cx="24" cy="34" rx="7.5" ry="26" fill="#F7B500"/>
+    <ellipse cx="24" cy="34" rx="7.5" ry="26" fill="#8CC63F" transform="rotate(26 24 34)"/>
+    <ellipse cx="24" cy="34" rx="7.5" ry="26" fill="#00A2D3" transform="rotate(52 24 34)"/>
+    <ellipse cx="24" cy="34" rx="7.5" ry="26" fill="#7BB8E4" transform="rotate(-26 24 34)"/>
+    <ellipse cx="24" cy="34" rx="7.5" ry="26" fill="#2E7CCB" transform="rotate(-52 24 34)"/>
+  </g>
+  <clipPath id="fan">
+    <rect x="2" y="16" width="44" height="30" rx="4"/>
+  </clipPath>
+  <circle cx="24" cy="20" r="3.4" fill="#fff"/>
+  <text x="24" y="44" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7.5" font-weight="700" fill="#F7B500">peacock</text>
+</svg>

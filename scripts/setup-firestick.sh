@@ -38,19 +38,29 @@ echo "==> Enabling accessibility watchdog service"
 "$ADB" -s "$DEVICE_IP:5555" shell settings put secure accessibility_enabled 1
 
 echo "==> Injecting dashboard prefs (password, port, relay URL)"
+# NOTE: a heredoc piped into `run-as` fails on Fire OS/Android ("can't create
+# temporary file /data/local/sh*.tmp: Permission denied"), so we push the file
+# via adb and copy it into the app data dir with `run-as`.
 if [ -n "$DASH_PASSWORD" ]; then
-    "$ADB" -s "$DEVICE_IP:5555" shell "run-as $PKG sh -c 'mkdir -p shared_prefs; cat > shared_prefs/screentamer_prefs.xml <<EOF
-<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?>
+    PREFS_TMP="$(mktemp -t screentamer-prefs)"
+    cat > "$PREFS_TMP" <<EOF
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
 <map>
-    <string name=\"parent_password\">$DASH_PASSWORD</string>
-    <int name=\"server_port\" value=\"$DASH_PORT\" />
-    <string name=\"server_url\">$RELAY_URL</string>
+    <string name="parent_password">$DASH_PASSWORD</string>
+    <int name="server_port" value="$DASH_PORT" />
+    <string name="server_url">$RELAY_URL</string>
 </map>
-EOF'"
+EOF
+    "$ADB" -s "$DEVICE_IP:5555" push "$PREFS_TMP" /data/local/tmp/screentamer_prefs.xml >/dev/null
+    "$ADB" -s "$DEVICE_IP:5555" shell "run-as $PKG sh -c 'mkdir -p shared_prefs && cp /data/local/tmp/screentamer_prefs.xml shared_prefs/screentamer_prefs.xml'"
+    "$ADB" -s "$DEVICE_IP:5555" shell rm -f /data/local/tmp/screentamer_prefs.xml
+    rm -f "$PREFS_TMP"
 fi
 
-echo "==> Verifying local adbd is reachable from the app itself"
-"$ADB" -s "$DEVICE_IP:5555" shell 'nc -z 127.0.0.1 5555 && echo "loopback adb OK" || echo "loopback adb NOT reachable"'
+echo "==> Checking adbd is reachable from the app itself (loopback :5555)"
+# NOTE: `nc` does not exist on Fire OS. adbd listening on 0.0.0.0 (00000000) or
+# 127.0.0.1 (0100007F) means loopback connects will work; port 5555 = 0x15B3.
+"$ADB" -s "$DEVICE_IP:5555" shell 'grep -qE "(0100007F|00000000):15B3" /proc/net/tcp 2>/dev/null && echo "loopback adb OK" || echo "loopback adb NOT detected — confirm with Test Local ADB in the app"'
 
 echo "==> Starting the agent service"
 "$ADB" -s "$DEVICE_IP:5555" shell am start -n "$PKG/.MainActivity"

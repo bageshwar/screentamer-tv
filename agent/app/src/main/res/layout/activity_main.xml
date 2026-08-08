@@ -15,181 +15,294 @@
             android:layout_height="wrap_content"
             android:text="@string/settings_title"
             android:textColor="@color/text"
-            android:textSize="30sp"
+            android:textSize="24sp"
             android:textStyle="bold"
-            android:paddingBottom="8dp" />
+            android:paddingBottom="6dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_dash_desc"
+            android:textColor="@color/text_dim"
+            android:textSize="18sp"
+            android:paddingBottom="24dp" />
+
+        <!-- ============ Service ============ -->
+        <TextView
+            style="@style/TextSectionHeader"
+            android:text="@string/sec_service" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:elevation="4dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnStart"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="16dp"
+                    android:text="@string/btn_start" />
+
+                <Button
+                    android:id="@+id/btnStop"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="16dp"
+                    android:text="@string/btn_stop" />
+
+                <Button
+                    android:id="@+id/btnTestAdb"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/btn_test_adb" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="24dp">
+
+                <Button
+                    android:id="@+id/btnLock"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="16dp"
+                    android:text="@string/btn_lock" />
+
+                <Button
+                    android:id="@+id/btnUnlock"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="16dp"
+                    android:text="@string/btn_unlock" />
+
+                <Button
+                    android:id="@+id/btnDash"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/btn_dash" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ============ Status ============ -->
+        <TextView
+            style="@style/TextSectionHeader"
+            android:text="@string/sec_status" />
 
         <TextView
             android:id="@+id/tvStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:elevation="4dp"
+            android:background="@drawable/bg_card"
+            android:padding="24dp"
             android:text="@string/status_default"
-            android:textColor="@color/text_dim"
-            android:textSize="17sp"
-            android:paddingBottom="24dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/label_server_url"
-            android:textColor="@color/text_dim"
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/etUrl"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/hint_url"
-            android:inputType="textUri"
             android:textColor="@color/text"
-            android:textColorHint="@color/text_dim"
             android:textSize="18sp"
-            android:padding="12dp" />
+            android:lineSpacingExtra="6dp" />
 
+        <!-- ============ Settings (tabbed) ============ -->
         <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/label_token"
-            android:textColor="@color/text_dim"
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/etToken"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/hint_token"
-            android:inputType="text"
-            android:textColor="@color/text"
-            android:textColorHint="@color/text_dim"
-            android:textSize="18sp"
-            android:padding="12dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/label_device_name"
-            android:textColor="@color/text_dim"
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/etName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/hint_name"
-            android:inputType="text"
-            android:textColor="@color/text"
-            android:textColorHint="@color/text_dim"
-            android:textSize="18sp"
-            android:padding="12dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/label_adb_port"
-            android:textColor="@color/text_dim"
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/etAdbPort"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/hint_port"
-            android:inputType="number"
-            android:textColor="@color/text"
-            android:textColorHint="@color/text_dim"
-            android:textSize="18sp"
-            android:padding="12dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/label_password"
-            android:textColor="@color/text_dim"
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/etPassword"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/hint_password"
-            android:inputType="textPassword"
-            android:textColor="@color/text"
-            android:textColorHint="@color/text_dim"
-            android:textSize="18sp"
-            android:padding="12dp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/label_dash_port"
-            android:textColor="@color/text_dim"
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/etPort"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/hint_dash_port"
-            android:inputType="number"
-            android:textColor="@color/text"
-            android:textColorHint="@color/text_dim"
-            android:textSize="18sp"
-            android:padding="12dp" />
+            style="@style/TextSectionHeader"
+            android:text="@string/sec_settings" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingTop="24dp">
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnTabDash"
+                style="@style/ScreenTamer.Tab"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="24dp"
+                android:text="@string/tab_dashboard" />
+
+            <Button
+                android:id="@+id/btnTabRelay"
+                style="@style/ScreenTamer.Tab"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="24dp"
+                android:text="@string/tab_relay" />
+
+            <Button
+                android:id="@+id/btnTabDevice"
+                style="@style/ScreenTamer.Tab"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/tab_device" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:elevation="4dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <LinearLayout
+                android:id="@+id/pageDashboard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_password"
+                    android:textColor="@color/text_dim"
+                    android:textSize="17sp" />
+
+                <EditText
+                    android:id="@+id/etPassword"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/hint_password"
+                    android:inputType="textPassword" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:text="@string/label_dash_port"
+                    android:textColor="@color/text_dim"
+                    android:textSize="17sp" />
+
+                <EditText
+                    android:id="@+id/etPort"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/hint_dash_port"
+                    android:inputType="number" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/pageRelay"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_server_url"
+                    android:textColor="@color/text_dim"
+                    android:textSize="17sp" />
+
+                <EditText
+                    android:id="@+id/etUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/hint_url"
+                    android:inputType="textUri" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:text="@string/label_token"
+                    android:textColor="@color/text_dim"
+                    android:textSize="17sp" />
+
+                <EditText
+                    android:id="@+id/etToken"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/hint_token"
+                    android:inputType="text" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/pageDevice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/label_device_name"
+                    android:textColor="@color/text_dim"
+                    android:textSize="17sp" />
+
+                <EditText
+                    android:id="@+id/etName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/hint_name"
+                    android:inputType="text" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:text="@string/label_adb_port"
+                    android:textColor="@color/text_dim"
+                    android:textSize="17sp" />
+
+                <EditText
+                    android:id="@+id/etAdbPort"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="@string/hint_port"
+                    android:inputType="number" />
+            </LinearLayout>
 
             <Button
                 android:id="@+id/btnSave"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/btn_primary_tv"
                 android:text="@string/btn_save" />
-
-            <Button
-                android:id="@+id/btnStart"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/btn_start" />
-
-            <Button
-                android:id="@+id/btnStop"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/btn_stop" />
         </LinearLayout>
 
-        <LinearLayout
+        <!-- ============ About ============ -->
+        <TextView
+            style="@style/TextSectionHeader"
+            android:text="@string/sec_about" />
+
+        <TextView
+            android:id="@+id/tvAbout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingTop="16dp">
-
-            <Button
-                android:id="@+id/btnTestAdb"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/btn_test_adb" />
-
-            <Button
-                android:id="@+id/btnLock"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/btn_lock" />
-
-            <Button
-                android:id="@+id/btnUnlock"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/btn_unlock" />
-        </LinearLayout>
+            android:elevation="4dp"
+            android:background="@drawable/bg_card"
+            android:padding="24dp"
+            android:text="@string/about_text"
+            android:textColor="@color/text"
+            android:textSize="18sp"
+            android:lineSpacingExtra="5dp" />
     </LinearLayout>
 </ScrollView>

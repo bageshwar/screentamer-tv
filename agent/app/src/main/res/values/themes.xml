@@ -7,5 +7,59 @@
         <item name="android:windowFullscreen">true</item>
         <item name="android:colorAccent">@color/accent</item>
         <item name="colorPrimary">@color/accent</item>
+        <item name="android:buttonStyle">@style/ScreenTamer.Button</item>
+        <item name="buttonStyle">@style/ScreenTamer.Button</item>
+        <item name="android:editTextStyle">@style/ScreenTamer.EditText</item>
+        <item name="editTextStyle">@style/ScreenTamer.EditText</item>
+    </style>
+
+    <style name="ScreenTamer.Button" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/btn_tv</item>
+        <item name="android:backgroundTint">@null</item>
+        <item name="android:textColor">@drawable/btn_text_tv</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:stateListAnimator">@animator/btn_focus</item>
+    </style>
+
+    <style name="ScreenTamer.EditText" parent="Widget.AppCompat.EditText">
+        <item name="android:background">@drawable/et_tv</item>
+        <item name="android:backgroundTint">@null</item>
+        <item name="android:textColor">@color/text</item>
+        <item name="android:textColorHint">@color/text_dim</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+    </style>
+
+    <style name="ScreenTamer.Tab" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/btn_tab</item>
+        <item name="android:backgroundTint">@null</item>
+        <item name="android:textColor">@drawable/btn_text_tv</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:stateListAnimator">@animator/btn_focus</item>
+    </style>
+
+    <style name="TextSectionHeader">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/accent_bright</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:paddingTop">28dp</item>
+        <item name="android:paddingBottom">10dp</item>
     </style>
 </resources>

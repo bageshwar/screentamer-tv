@@ -77,9 +77,10 @@ Auth: password from `x-parent-password` header, or `password` query/body. Unauth
 
 | Route | Handler | Notes |
 | --- | --- | --- |
-| `GET /` , `GET /static/*` | assets from `assets/www/` | mirror of `server-relay/public/` |
+| `GET /` , `GET /static/*` | assets from `assets/www/` | mirror of `server-relay/public/` (subdirs preserved, e.g. `icons/`) |
+| `GET /api/icon?pkg=` | real app icon (PNG) | via `PackageManager.getApplicationIcon`; unknown package → 404; relay/mock 404 too → client falls back |
 | `POST /api/login` | `{password}` | → `{ok}` / 401 |
-| `GET /api/state` | `{defaultPolicy, devices{}, usage{}}` | device: online, lastSeen, currentApp, locked, totalMs, policy, **log**, **health**, serverPort |
+| `GET /api/state` | `{defaultPolicy, devices{}, usage{}}` | device: online, lastSeen, currentApp, locked, totalMs, policy, **log**, **health**, serverPort, **iconEndpoint** |
 | `GET /api/history?days=` | `{deviceId, days, today, history[]}` | oldest→newest, 1–365 days |
 | `POST /api/config` | `{policy}` | normalizes + applies + persists policy |
 | `POST /api/command` | `{command:{type,pkg?}}` | dispatches; unknown type → 400 |
@@ -122,9 +123,29 @@ Overlay releases automatically when the condition clears; the policy survives re
 
 ## 5. Dashboard (shared frontend)
 
-- On-demand data flow: `loadData()` = `Promise.all(/api/state, /api/history)` on boot, Refresh button, and after every command/policy save. `x-parent-password` header on every call.
-- Devices view: cards (online, model/OS, current app, locked, today total), actions (lock/unlock/pause/play/home/force-stop), policy editor (limit/curfew/blacklist), activity log, health.
-- Reports view: 14-day chart + today/yesterday/week/avg stats; per-day per-app breakdown with day navigation; day labels trust the server's `today` over the browser clock (timezone safety).
+- One responsive UI, three views, styled per client:
+  - **Report** (default): device status strip (online/offline dot, model/OS,
+    last seen, now playing, lock/blacklist badges), day navigation
+    (‹ prev · Today · next ›; chart bars are clickable too), today/yesterday/
+    7-day/average stats, 14-day chart, per-app breakdown.
+  - **Activity**: per-device log (newest first, "usage reported" heartbeats
+    collapsed) + agent health card (start count, last tick, tick failures,
+    last error).
+  - **Settings**: device controls (lock/unlock, pause/play, home, force-stop),
+    device info, policy editor (daily limit, curfew, blacklist with
+    tap-to-add "recent apps" chips + manual package input).
+- **Per-client layout**: laptop (default, ≤1240px content), phone
+  (`max-width: 700px`: full-width tab row, 48px touch targets, 2-col stats,
+  top-6 breakdown with "show more"), TV (`?tv=1`: large cards, 5px focus
+  rings + glow + scale on every focusable element, 300px chart).
+- **App icons degrade gracefully**: device real icon (`/api/icon?pkg=`, only
+  when state says `iconEndpoint: true`) → bundled brand SVG
+  (`/static/icons/*.svg`) → deterministic colored letter avatar.
+- On-demand data flow: `loadData()` = `Promise.all(/api/state, /api/history)`
+  on boot, Refresh button, and after every command/policy save.
+  `x-parent-password` header on every call.
+- Day labels trust the server's `today` over the browser clock (timezone
+  safety); chart hint stamps the fetch time (`updated hh:mm`).
 
 ## 6. Observability
 
@@ -161,8 +182,11 @@ Setup: build APK → sideload → `scripts/setup-firestick.sh` (grants + prefs i
 | Suite | Scope | Command |
 | --- | --- | --- |
 | Smoke | Relay REST/WS contract (17 checks) | `npm test` (in `server-relay/`) |
-| Headless | Dashboard in real Chromium, real data, no JS errors | `npm run test:headless` |
+| Headless | Dashboard in real Chromium, real data, no JS errors; laptop + phone + TV layouts, screenshots | `npm run test:headless` (against relay, `DASH_URL=…:4000 DASH_PASSWORD=demo` for mock) |
 | E2E | Emulator: home → lock → unlock → curfew → restore → history → dashboard, 18 checks + screenshots/evidence | `npm run test:e2e` |
+
+Design iteration without any device or APK build: `npm run dev` in
+`server-relay/` (mock dataset + hot reload on `public/` changes).
 
 E2E/headless target either server via `DASH_URL` (+ `DASH_PASSWORD` for the embedded server). Evidence (screenshots, state/health snapshot, history JSON, results) lands in `evidence/e2e-<timestamp>/` and is committed to the repo.
 

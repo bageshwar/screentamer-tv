@@ -13,12 +13,12 @@ import android.view.accessibility.AccessibilityEvent
 class AgentAccessibilityService : AccessibilityService() {
 
     companion object {
-        private const val TAG = "AgentAccessibility"
+        private const val TAG = "ScreenTamer/Accessibility"
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        Log.i(TAG, "accessibility connected - watchdog active")
+        Log.i(TAG, "accessibility connected - watchdog active, starting agent")
         AgentService.start(this)
     }
 
@@ -27,5 +27,10 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
+    }
+
+    override fun onDestroy() {
+        Log.w(TAG, "accessibility disconnected — agent watchdog lost; Fire OS may have killed the service")
+        super.onDestroy()
     }
 }

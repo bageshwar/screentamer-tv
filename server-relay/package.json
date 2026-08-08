@@ -6,6 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "dev": "node dev-server.js",
     "test": "node test/smoke.js",
     "test:headless": "node test/headless/run.js",
     "test:e2e": "node test/e2e/run.js"

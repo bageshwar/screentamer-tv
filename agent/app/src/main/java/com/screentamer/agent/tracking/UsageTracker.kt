@@ -2,6 +2,7 @@ package com.screentamer.agent.tracking
 
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.util.Log
 import com.screentamer.agent.data.KnownApps
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -13,6 +14,12 @@ import java.util.Locale
  * and detects the active app from UsageStats events.
  */
 class UsageTracker(private val context: Context) {
+
+    companion object {
+        private const val TAG = "ScreenTamer/UsageTracker"
+
+        fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
 
     /** Millis since midnight that each app has been in the foreground today. */
     fun usageToday(): Map<String, Long> {
@@ -26,11 +33,14 @@ class UsageTracker(private val context: Context) {
             val dayStart = cal.timeInMillis
 
             val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, dayStart, System.currentTimeMillis())
-            stats
+            val tracked = stats
                 .filter { it.totalTimeInForeground > 0 && !KnownApps.isSystemish(it.packageName) }
                 .associate { it.packageName to it.totalTimeInForeground }
+            Log.d(TAG, "usage today: ${tracked.size} apps, ${tracked.values.sum()}ms")
+            tracked
         } catch (e: SecurityException) {
             // PACKAGE_USAGE_STATS not granted via adb yet.
+            Log.w(TAG, "PACKAGE_USAGE_STATS not granted — usage tracking off")
             emptyMap()
         }
     }
@@ -54,11 +64,8 @@ class UsageTracker(private val context: Context) {
             }
             last?.takeIf { !KnownApps.isSystemish(it) }
         } catch (e: SecurityException) {
+            Log.w(TAG, "PACKAGE_USAGE_STATS not granted — cannot detect foreground app")
             null
         }
-    }
-
-    companion object {
-        fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     }
 }

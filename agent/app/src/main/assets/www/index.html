@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <div id="login" class="login hidden">
+  <div id="login" class="login">
     <div class="card login-card">
       <h1>ScreenTamer</h1>
       <p class="muted">Parent dashboard</p>
@@ -25,56 +25,203 @@
         <span id="connDot" class="dot off"></span>
         <span id="connText" class="muted">offline</span>
       </div>
-      <div style="display:flex;gap:8px">
-        <button id="refreshBtn" class="btn">Refresh</button>
+
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-view="report">Report</button>
+        <button class="tab" data-view="activity">Activity</button>
+        <button class="tab" data-view="settings">Settings</button>
+      </nav>
+
+      <div class="top-actions">
+        <select id="deviceSelect" class="btn" title="Device"></select>
+        <button id="refreshBtn" class="btn" title="Refresh">⟳</button>
         <button id="logoutBtn" class="btn subtle">Log out</button>
       </div>
     </header>
 
     <div class="banner hidden" id="banner"></div>
 
-    <div id="devices" class="devices"></div>
-
     <div id="noDevices" class="empty hidden">
       <h2>No devices yet</h2>
       <p class="muted">Install the agent APK on a Fire TV, run the setup script, and refresh.</p>
     </div>
 
-    <section id="reports" class="reports hidden">
-      <div class="reports-head">
-        <h2>Reports</h2>
-        <div class="report-actions">
-          <select id="reportDevice" class="btn" title="Device"></select>
-          <span id="reportRange" class="muted"></span>
-        </div>
-      </div>
-
-      <div class="stats-row">
-        <div class="stat card"><div class="stat-label">Today</div><div class="stat-value" id="statToday">—</div></div>
-        <div class="stat card"><div class="stat-label">Yesterday</div><div class="stat-value" id="statYesterday">—</div></div>
-        <div class="stat card"><div class="stat-label">Last 7 days</div><div class="stat-value" id="statWeek">—</div></div>
-        <div class="stat card"><div class="stat-label">Daily average (7d)</div><div class="stat-value" id="statAvg">—</div></div>
-      </div>
-
-      <div class="card chart-card">
-        <h3>Screen time — last 14 days</h3>
-        <p class="muted" style="font-size:12px">Click a bar to inspect that day's apps.</p>
-        <canvas id="dailyChart" height="220"></canvas>
-      </div>
-
-      <div class="card chart-card">
-        <div class="chart-head">
-          <h3>Per-app breakdown</h3>
-          <span id="appDayLabel" class="muted"></span>
+    <!-- ============ Report (default view) ============ -->
+    <main id="view-report" class="view">
+      <section class="report">
+        <header class="report-head">
+          <div>
+            <h2 id="reportDayTitle">Today's report</h2>
+            <span id="reportDaySub" class="muted"></span>
+          </div>
           <div class="day-nav">
-            <button id="dayPrev" class="btn sm">‹</button>
+            <button id="dayPrev" class="btn sm" title="Previous day">‹</button>
             <button id="dayToday" class="btn sm">Today</button>
-            <button id="dayNext" class="btn sm">›</button>
+            <button id="dayNext" class="btn sm" title="Next day">›</button>
+          </div>
+        </header>
+
+        <div class="status-card" id="statusCard">
+          <span class="dot on" id="statusDot"></span>
+          <div class="status-main">
+            <div class="status-name" id="statusName">—</div>
+            <div class="status-meta muted" id="statusMeta">—</div>
+          </div>
+          <div class="now-playing">
+            <div class="muted label">Now playing</div>
+            <div id="nowPlaying"><span class="muted">—</span></div>
+          </div>
+          <div class="status-badges" id="statusBadges"></div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat card">
+            <div class="stat-label" id="statTodayLabel">Today</div>
+            <div class="stat-value" id="statToday">—</div>
+          </div>
+          <div class="stat card">
+            <div class="stat-label">Yesterday</div>
+            <div class="stat-value" id="statYesterday">—</div>
+          </div>
+          <div class="stat card">
+            <div class="stat-label">Last 7 days</div>
+            <div class="stat-value" id="statWeek">—</div>
+          </div>
+          <div class="stat card">
+            <div class="stat-label">Daily average (7d)</div>
+            <div class="stat-value" id="statAvg">—</div>
           </div>
         </div>
-        <div id="appBreakdown" class="breakdown"><div class="muted">no data for this day</div></div>
-      </div>
-    </section>
+
+        <div class="card chart-card">
+          <h3>Screen time — last 14 days</h3>
+          <p class="chart-hint" id="chartHint">Select a bar to inspect that day.</p>
+          <canvas id="dailyChart" height="220"></canvas>
+        </div>
+
+        <div class="card chart-card">
+          <div class="chart-head">
+            <h3>App usage</h3>
+            <span id="appDayLabel" class="muted"></span>
+          </div>
+          <div id="appBreakdown" class="breakdown"><div class="muted">no data for this day</div></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============ Activity ============ -->
+    <main id="view-activity" class="view hidden">
+      <section class="report">
+        <header class="report-head">
+          <div>
+            <h2>Activity</h2>
+            <span class="muted">Device log &amp; agent health</span>
+          </div>
+          <button id="activityClear" class="btn sm hidden">Clear</button>
+        </header>
+
+        <div class="status-card compact" id="activityStatus">
+          <span class="dot off" id="actDot"></span>
+          <div class="status-main">
+            <div class="status-name" id="actName">—</div>
+            <div class="status-meta muted" id="actMeta">—</div>
+          </div>
+          <div class="now-playing">
+            <div class="muted label">Now playing</div>
+            <div id="actNowPlaying"><span class="muted">—</span></div>
+          </div>
+          <div class="status-badges" id="actBadges"></div>
+        </div>
+
+        <div class="grid-activity">
+          <div class="card">
+            <h3>Activity log</h3>
+            <div class="log-list" id="activityLog"></div>
+          </div>
+          <div class="card">
+            <h3>Agent health</h3>
+            <div id="healthBox" class="health-box muted"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============ Settings ============ -->
+    <main id="view-settings" class="view hidden">
+      <section class="report">
+        <header class="report-head">
+          <div>
+            <h2>Settings</h2>
+            <span class="muted" id="settingsSub">Limits, curfew &amp; controls</span>
+          </div>
+        </header>
+
+        <div class="status-card compact" id="settingsStatus">
+          <span class="dot off" id="setDot"></span>
+          <div class="status-main">
+            <div class="status-name" id="setName">—</div>
+            <div class="status-meta muted" id="setMeta">—</div>
+          </div>
+          <div class="now-playing">
+            <div class="muted label">Now playing</div>
+            <div id="setNowPlaying"><span class="muted">—</span></div>
+          </div>
+          <div class="status-badges" id="setBadges"></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Device controls</h3>
+            <p class="muted" style="font-size:13px;margin-bottom:12px">Sent to the device immediately.</p>
+            <div class="controls">
+              <button class="btn" data-act="lock">🔒 Lock now</button>
+              <button class="btn" data-act="unlock">Unlock</button>
+              <button class="btn" data-act="pause">⏸ Pause</button>
+              <button class="btn" data-act="play">▶ Play</button>
+              <button class="btn" data-act="home">🏠 Go home</button>
+              <div class="stop-row">
+                <select class="btn" id="stopSelect">
+                  <option value="">Force-stop app…</option>
+                </select>
+                <button class="btn sm" data-act="stopApp">Stop</button>
+              </div>
+            </div>
+
+            <h3 style="margin-top:24px">Device info</h3>
+            <div class="device-info muted" id="deviceInfo"></div>
+          </div>
+
+          <div class="card policy">
+            <h3>Limits &amp; curfew</h3>
+            <div class="field">
+              <label>Daily limit</label>
+              <input type="number" min="0" step="0.5" data-policy="limit" />
+              <span class="muted">hours (0 = none)</span>
+            </div>
+            <div class="field">
+              <label>Curfew</label>
+              <input type="checkbox" data-policy="curfewOn" />
+              <input type="time" data-policy="curfewStart" />
+              <span class="muted">to</span>
+              <input type="time" data-policy="curfewEnd" />
+            </div>
+            <div class="field">
+              <label>Blacklist</label>
+            </div>
+            <div class="blacklist-chips" id="blacklistChips"></div>
+            <div class="quick-chips" id="blacklistQuick">
+              <span class="muted" style="font-size:12px">add from recent apps…</span>
+            </div>
+            <div class="add-blacklist">
+              <input type="text" id="blacklistInput" placeholder="package, e.g. com.netflix.ninja" />
+              <button class="btn sm primary" data-act="blacklist">Add</button>
+            </div>
+            <button class="btn primary" data-act="savePolicy" style="margin-top:12px">Save policy</button>
+            <p class="muted" id="policySaved" style="font-size:12px;margin-top:8px"></p>
+          </div>
+        </div>
+      </section>
+    </main>
 
     <footer class="muted footer">ScreenTamer hobby project — parental control for your own Fire TV devices.</footer>
   </div>

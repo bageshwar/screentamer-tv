@@ -22,7 +22,7 @@ import com.screentamer.agent.R
 class LockOverlay(private val context: Context) {
 
     companion object {
-        private const val TAG = "LockOverlay"
+        private const val TAG = "ScreenTamer/LockOverlay"
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -65,7 +65,7 @@ class LockOverlay(private val context: Context) {
                 }
                 wm.addView(v, lp)
                 view = v
-                Log.i(TAG, "lock overlay shown")
+                Log.i(TAG, "lock overlay shown: $message")
             } catch (e: Exception) {
                 Log.w(TAG, "overlay failed: ${e.message}")
             }

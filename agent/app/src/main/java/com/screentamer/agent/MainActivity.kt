@@ -2,13 +2,19 @@ package com.screentamer.agent
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.provider.Settings
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.screentamer.agent.core.AdbClient
 import com.screentamer.agent.overlay.LockOverlay
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +25,10 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val TAG = "ScreenTamer/MainActivity"
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private lateinit var etUrl: EditText
@@ -28,6 +38,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etPassword: EditText
     private lateinit var etPort: EditText
     private lateinit var tvStatus: TextView
+    private lateinit var btnStart: Button
+    private lateinit var btnStop: Button
+    private lateinit var btnTabDash: Button
+    private lateinit var btnTabRelay: Button
+    private lateinit var btnTabDevice: Button
+    private lateinit var pageDashboard: android.view.View
+    private lateinit var pageRelay: android.view.View
+    private lateinit var pageDevice: android.view.View
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +58,23 @@ class MainActivity : AppCompatActivity() {
         etPassword = findViewById(R.id.etPassword)
         etPort = findViewById(R.id.etPort)
         tvStatus = findViewById(R.id.tvStatus)
+        btnStart = findViewById(R.id.btnStart)
+        btnStop = findViewById(R.id.btnStop)
+        btnTabDash = findViewById(R.id.btnTabDash)
+        btnTabRelay = findViewById(R.id.btnTabRelay)
+        btnTabDevice = findViewById(R.id.btnTabDevice)
+        pageDashboard = findViewById(R.id.pageDashboard)
+        pageRelay = findViewById(R.id.pageRelay)
+        pageDevice = findViewById(R.id.pageDevice)
+
+        btnTabDash.setOnClickListener { selectTab(0) }
+        btnTabRelay.setOnClickListener { selectTab(1) }
+        btnTabDevice.setOnClickListener { selectTab(2) }
+        selectTab(0)
+        btnStart.requestFocus()
+
+        findViewById<TextView>(R.id.tvAbout).text = getString(R.string.about_text) +
+            "\n\nVersion " + BuildConfig.VERSION_NAME
 
         etUrl.setText(Prefs.serverUrl(this))
         etToken.setText(Prefs.pairingToken(this))
@@ -47,6 +82,11 @@ class MainActivity : AppCompatActivity() {
         etAdbPort.setText(Prefs.adbPort(this).toString())
         etPassword.setText(Prefs.parentPassword(this))
         etPort.setText(Prefs.serverPort(this).toString())
+
+        // Auto-start: opening the app (by hand, or by the setup script's `am
+        // start`) must bring the agent up — no manual "Start Agent" needed.
+        AgentService.start(this)
+        Log.i(TAG, "app opened — agent auto-start requested")
 
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             Prefs.save(
@@ -62,16 +102,19 @@ class MainActivity : AppCompatActivity() {
                 etPort.text.toString().toIntOrNull() ?: 8080
             )
             AgentService.reconfigure(this)
+            Log.i(TAG, "settings saved — service reconfigured")
             toast("Saved")
             renderStatus()
         }
         findViewById<Button>(R.id.btnStart).setOnClickListener {
             AgentService.start(this)
+            Log.i(TAG, "manual start pressed")
             toast("Agent started")
             renderStatus()
         }
         findViewById<Button>(R.id.btnStop).setOnClickListener {
             AgentService.stop(this)
+            Log.i(TAG, "manual stop pressed")
             renderStatus()
         }
         findViewById<Button>(R.id.btnTestAdb).setOnClickListener {
@@ -79,11 +122,17 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btnLock).setOnClickListener {
             AgentService.command(this, "lock")
+            Log.i(TAG, "lock pressed")
             toast("Lock command sent")
         }
         findViewById<Button>(R.id.btnUnlock).setOnClickListener {
             AgentService.command(this, "unlock")
+            Log.i(TAG, "unlock pressed")
             toast("Unlock command sent")
+        }
+        findViewById<Button>(R.id.btnDash).setOnClickListener {
+            Log.i(TAG, "opening in-TV dashboard")
+            startActivity(Intent(this, DashboardActivity::class.java))
         }
     }
 
@@ -92,11 +141,22 @@ class MainActivity : AppCompatActivity() {
         renderStatus()
     }
 
+    private fun selectTab(tab: Int) {
+        btnTabDash.isSelected = tab == 0
+        btnTabRelay.isSelected = tab == 1
+        btnTabDevice.isSelected = tab == 2
+        pageDashboard.visibility = if (tab == 0) android.view.View.VISIBLE else android.view.View.GONE
+        pageRelay.visibility = if (tab == 1) android.view.View.VISIBLE else android.view.View.GONE
+        pageDevice.visibility = if (tab == 2) android.view.View.VISIBLE else android.view.View.GONE
+        Log.i(TAG, "settings tab selected: $tab")
+    }
+
     private fun testAdb() {
         tvStatus.text = "Testing local ADB (127.0.0.1:${Prefs.adbPort(this)})..."
         scope.launch {
             val adb = AdbClient(this@MainActivity)
             val ok = withContext(Dispatchers.IO) { adb.runShell("echo screentamer-ok") }
+            Log.i(TAG, "adb self-test: ${if (ok) "OK" else "FAILED"}")
             tvStatus.text = if (ok) {
                 "ADB: OK — media keys and force-stop available.\n" +
                     "Note: the first connection registers the agent's key with adbd."
@@ -107,11 +167,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderStatus() {
-        val sb = StringBuilder()
-
         val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val running = am.runningAppProcesses?.any { it.processName == packageName && it.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED } == true
-        sb.append(if (running) "Agent service: running\n" else "Agent service: stopped\n")
 
         val usageGranted = try {
             val usm = getSystemService(android.app.usage.UsageStatsManager::class.java)
@@ -120,15 +177,51 @@ class MainActivity : AppCompatActivity() {
         } catch (e: SecurityException) {
             false
         }
-        sb.append("Usage stats permission: ${if (usageGranted) "granted" else "NOT granted (run the setup script)"}\n")
+        val overlayGranted = LockOverlay(this).canDrawOverlays
 
-        val overlay = LockOverlay(this)
-        sb.append("Overlay permission: ${if (overlay.canDrawOverlays) "granted" else "NOT granted (run the setup script)"}\n")
+        val sp = SpannableStringBuilder()
+        fun line(text: String, color: Int? = null) {
+            val start = sp.length
+            sp.append(text).append('\n')
+            if (color != null) {
+                sp.setSpan(
+                    ForegroundColorSpan(color),
+                    start, sp.length - 1,
+                    SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+        val ok = ContextCompat.getColor(this, R.color.ok)
+        val bad = ContextCompat.getColor(this, R.color.danger)
+        val okMark = if (running) "✓" else "✗"
+        line("Agent service: ${if (running) "running $okMark" else "stopped $okMark"}",
+            if (running) ok else bad)
+        val usageMark = if (usageGranted) "✓" else "✗"
+        line(
+            "Usage stats permission: ${if (usageGranted) "granted $usageMark" else "NOT granted $usageMark — run the setup script"}",
+            if (usageGranted) ok else bad
+        )
+        val overlayMark = if (overlayGranted) "✓" else "✗"
+        line(
+            "Overlay permission: ${if (overlayGranted) "granted $overlayMark" else "NOT granted $overlayMark — run the setup script"}",
+            if (overlayGranted) ok else bad
+        )
+        line("Server: ${Prefs.serverUrl(this).ifBlank { "<not set>" }}")
+        line("Dashboard: http://<this-device>:${Prefs.serverPort(this)}")
+        line("Device ID: ${Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"}")
+        tvStatus.text = sp
 
-        sb.append("Server: ${Prefs.serverUrl(this).ifBlank { "<not set>" }}\n")
-        sb.append("Dashboard: http://<this-device>:${Prefs.serverPort(this)}\n")
-        sb.append("Device ID: ${Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"}")
-        tvStatus.text = sb.toString()
+        // Active-state emphasis: the relevant control is the primary (filled)
+        // one. Both stay enabled so the D-pad focus ring never disappears.
+        btnStart.background = ContextCompat.getDrawable(
+            this,
+            if (running) R.drawable.btn_tv else R.drawable.btn_primary_tv
+        )
+        btnStop.background = ContextCompat.getDrawable(
+            this,
+            if (running) R.drawable.btn_primary_tv else R.drawable.btn_tv
+        )
+        Log.i(TAG, "status rendered: service ${if (running) "running" else "stopped"}")
     }
 
     private fun toast(msg: String) {

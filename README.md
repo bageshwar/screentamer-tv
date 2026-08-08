@@ -140,16 +140,40 @@ channel. The agent is live when the status shows `Dashboard: http://<this-device
 Open `http://<fire-tv-ip>:8080/` from any browser on your LAN (or from a
 computer via `adb forward tcp:8080 tcp:8080` → `http://127.0.0.1:8080/`).
 
-| Section | Contents |
+The dashboard is one responsive UI with three tabs, styled per client: the
+**Report** tab is the default; the phone layout (`max-width: 700px`) is
+thumb-first with 48px touch targets; the TV WebView (`?tv=1`) switches to
+large D-pad-first cards with strong focus rings.
+
+| Tab | Contents |
 | --- | --- |
-| Devices | One card per TV: online/offline, model, current app, lock state, today's total, policy editor (limit, curfew, blacklist), actions |
-| Actions | Lock now / unlock, pause, play, go home, force-stop (per app in the breakdown) |
-| Reports | 14-day usage chart, today/yesterday/week/avg totals, per-day per-app breakdown with day navigation |
-| Activity log | Recent agent events (policy changes, commands, enforcement, failures) |
-| Health | Service start count, last start/tick, tick failures, last error — visible in each device's state |
+| Report | Device status strip (online/offline, model, last seen, now playing), day navigation (‹ prev · Today · next › or click a chart bar), today's total, yesterday / 7-day / average stats, 14-day usage chart, per-app breakdown with app icons |
+| Activity | Per-device activity log (newest first) + agent health card (start count, last tick, tick failures, last error) |
+| Settings | Device controls (lock/unlock, pause/play, home, force-stop) + device info + policy editor (daily limit, curfew, blacklist with tap-to-add recent apps) |
+
+App icons degrade gracefully: the device's **real icon** (`/api/icon?pkg=…`,
+only on the agent), then a bundled brand SVG for well-known apps
+(`/static/icons/*.svg`), then a colored letter avatar.
 
 The dashboard fetches on demand: it loads on open, on **Refresh**, and
 automatically after any action. No polling, no live socket.
+
+### Design / dev loop (no device, no APK build)
+
+The dashboard is plain HTML/CSS/JS in `server-relay/public/` — no compile
+step. For fast design iteration with realistic mock data and hot reload:
+
+```bash
+cd server-relay
+npm run dev        # http://127.0.0.1:4000  (password: demo)
+```
+
+Edit anything under `public/` and the open tab reloads automatically.
+Screenshots of all three clients come from the headless harness:
+
+```bash
+DASH_URL=http://127.0.0.1:4000 DASH_PASSWORD=demo npm run test:headless
+```
 
 ## Optional relay for multiple TVs
 
@@ -192,8 +216,8 @@ Every layer logs and every device keeps a persistent record:
 
 | Layer | Where it logs |
 | --- | --- |
-| Agent HTTP server | `logcat -s EmbeddedServer` — `[http] METHOD path -> status (ms)` per request |
-| Agent service | `logcat -s AgentService` — ticks, enforcement, commands, login rejections, lifecycle |
+| Agent HTTP server | `logcat -s ScreenTamer` — `[http] <ip> METHOD path -> status (ms)` per request |
+| Agent service | `logcat -s ScreenTamer` — ticks, enforcement, commands, login rejections, lifecycle |
 | Agent on-device | `files/data/{history/,log.json,health.json}` — served to the dashboard |
 | Relay | Console — `[http]` access log, `[ws]` connect/hello/usage/log/disconnect |
 | Dashboard | Browser console — `[dashboard]` login, fetches, actions, failures |
@@ -211,14 +235,16 @@ screentamer-tv/
 │   └── app/src/main/
 │       ├── java/com/screentamer/agent/
 │       │   ├── AgentService.kt           # foreground service: loop, server, relay
+│       │   ├── MainActivity.kt           # on-TV settings UI (auto-starts agent)
+│       │   ├── DashboardActivity.kt      # in-TV dashboard (WebView → embedded server)
 │       │   ├── Prefs.kt                  # shared-prefs accessors
-│       │   ├── MainActivity.kt           # on-TV settings UI
 │       │   ├── core/                     # AdbClient, AgentSocket, PolicyManager
 │       │   ├── http/                     # EmbeddedServer, DeviceStore
 │       │   ├── tracking/                 # UsageTracker
 │       │   ├── overlay/                  # LockOverlay
 │       │   └── data/                     # Protocol, KnownApps
 │       └── assets/www/                   # embedded dashboard (mirror of public/)
+├── art/                           # icon/banner SVG sources (gen-icons.sh)
 ├── server-relay/                 # optional relay (Node.js)
 │   ├── server.js                 # REST + WebSocket + dashboard
 │   ├── lib/                      # store (JSON files), protocol
@@ -226,8 +252,11 @@ screentamer-tv/
 │   ├── data/                     # config.json, state, history (gitignored)
 │   └── test/                     # smoke, headless, e2e suites
 ├── scripts/
-│   └── setup-firestick.sh        # grants + prefs injection
+│   ├── setup-firestick.sh        # grants + prefs injection
+│   └── gen-icons.sh              # renders launcher/banner PNGs (qlmanage)
 ├── evidence/                     # captured test evidence (screenshots, results)
+├── docs/
+│   └── FIRE-TV-SETUP.md          # real-device runbook + FAQ/gotchas
 ├── screentamer-project-spec.md   # design specification
 └── README.md
 ```

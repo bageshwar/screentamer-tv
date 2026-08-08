@@ -1,5 +1,6 @@
 package com.screentamer.agent.http
 
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -12,6 +13,10 @@ import java.util.Calendar
  */
 class DeviceStore(private val dataDir: File) {
 
+    companion object {
+        private const val TAG = "ScreenTamer/DeviceStore"
+    }
+
     private val historyDir = File(dataDir, "history")
     private val healthFile = File(dataDir, "health.json")
     private val logFile = File(dataDir, "log.json")
@@ -19,6 +24,7 @@ class DeviceStore(private val dataDir: File) {
     init {
         historyDir.mkdirs()
         dataDir.mkdirs()
+        Log.i(TAG, "store ready at ${dataDir.path}")
     }
 
     // ------------------------------------------------------------------
@@ -50,6 +56,7 @@ class DeviceStore(private val dataDir: File) {
             if (ms >= 0 && bucket.optLong(pkg) != ms) bucket.put(pkg, ms)
         }
         writeDay(date, bucket)
+        Log.d(TAG, "saved usage $date apps=${apps.size}")
         return bucket
     }
 
@@ -70,9 +77,14 @@ class DeviceStore(private val dataDir: File) {
 
     fun sweep(retentionDays: Int = 90) {
         val cutoff = System.currentTimeMillis() - retentionDays * 24L * 60 * 60 * 1000
+        var deleted = 0
         historyDir.listFiles()?.forEach { f ->
-            if (f.isFile && f.lastModified() < cutoff) f.delete()
+            if (f.isFile && f.lastModified() < cutoff) {
+                f.delete()
+                deleted++
+            }
         }
+        if (deleted > 0) Log.i(TAG, "swept $deleted history files older than ${retentionDays}d")
     }
 
     // ------------------------------------------------------------------
@@ -117,6 +129,7 @@ class DeviceStore(private val dataDir: File) {
         h.put("startCount", h.optInt("startCount") + 1)
         h.put("lastStartAt", System.currentTimeMillis())
         saveHealth(h)
+        Log.i(TAG, "service start bumped to #${h.optInt("startCount")}")
     }
 
     fun noteTick() {
@@ -133,6 +146,7 @@ class DeviceStore(private val dataDir: File) {
             .put("msg", e.message ?: e.javaClass.simpleName)
             .put("trace", e.stackTrace.take(4).joinToString(" | ")))
         saveHealth(h)
+        Log.w(TAG, "tick failure #${h.optInt("tickFailures")}: ${e.message}")
     }
 
     private fun dateKey(cal: Calendar): String {
