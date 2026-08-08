@@ -363,7 +363,10 @@ function render() {
     const b = $('#banner');
     if (device && device.update && device.update.hasUpdate) {
       const dlLink = device.update.downloadUrl || 'https://github.com/bageshwar/screentamer-tv/releases';
-      b.innerHTML = `★ <strong>Update Available:</strong> A new version <code>${escapeHtml(device.update.latestVersion)}</code> is available. <a href="${dlLink}" target="_blank" style="color:inherit;text-decoration:underline">Download APK</a>`;
+      b.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap;gap:8px">
+        <span>★ <strong>Update Available:</strong> Version <code>${escapeHtml(device.update.latestVersion)}</code> is ready to install.</span>
+        <a href="${dlLink}" class="btn sm primary" target="_blank" style="text-decoration:none;display:inline-block">Download APK</a>
+      </div>`;
       b.classList.remove('hidden');
     } else {
       b.classList.add('hidden');

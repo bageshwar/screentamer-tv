@@ -247,7 +247,10 @@ class MainActivity : AppCompatActivity() {
         if (com.screentamer.agent.core.UpdateManager.hasUpdate) {
             line("")
             line("★ UPDATE AVAILABLE: ${com.screentamer.agent.core.UpdateManager.latestVersionName}", bad)
-            line("Download: ${com.screentamer.agent.core.UpdateManager.latestApkUrl.ifEmpty { "github.com/bageshwar/screentamer-tv/releases" }}", bad)
+            line("To update, open the 'Downloader' app on your TV and type:", ok)
+            line("  tinyurl.com/screentamer-latest", ok)
+            line("Or visit the release page on a phone/PC:", ok)
+            line("  github.com/bageshwar/screentamer-tv/releases", ok)
         }
         tvStatus.text = sp
 
