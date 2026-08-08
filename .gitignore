@@ -9,3 +9,5 @@ agent/app/build/
 agent/local.properties
 .DS_Store
 *.apk
+session-ses_*.md
+art/options/
