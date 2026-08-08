@@ -1,83 +1,175 @@
-# Project Specification: ScreenTamer (Firestick Parental Control Hobby App)
+# ScreenTamer — Design Specification
 
-## 1. Project Overview
-**ScreenTamer** is a custom, self-hosted parental control and remote monitoring system designed for Amazon Fire TV devices (Fire OS). Built as an experimental hobby project, it leverages local ADB loopback commands, Accessibility Services, and a lightweight web dashboard to enforce screen time limits and remotely control device playback.
+Self-hosted parental control and screen-time monitoring for Amazon Fire TV (Fire OS), built as a hobby project. Current as of the 2026-08 device-only release.
 
----
+## 1. Design essence
 
-## 2. Architecture & Components
+**The TV is the control plane.** The agent embeds the dashboard server, persists its own history/logs/health on-device, and enforces policies with its own loopback adb channel. There is no required server, cloud, or subscription.
 
-The system consists of two primary components:
+Five principles drive the design:
 
-1. **Firestick Agent App (Android APK)** — the primary control plane
-   - Foreground service running on Fire OS.
-   - **Embedded HTTP server on the device** (`:8080`) serving the parent
-     dashboard and the REST API (on-demand fetch — no polling, no push).
-   - On-device persistence: per-day usage history files, activity log, and a
-     health record (service start count, last tick, tick failures, last error)
-     so service lifecycle problems are visible from the dashboard.
-   - Local ADB loopback executor (`localhost:5555`) for system actions.
-   - Optional WebSocket client that pushes usage/logs to a relay server when
-     a relay URL is configured.
+1. **Device-only by default** — every `/api/*` route, the dashboard HTML, and all persistence live inside the agent APK. The TV works standalone.
+2. **On-demand UX** — the dashboard fetches on load, on Refresh, and after each action. No polling, no push channel, no sockets in the UI. Fewer moving parts, honest state.
+3. **Persistence is local** — per-day usage files, an activity log and a health record are written atomically on the device; the dashboard reads them back over HTTP.
+4. **Observability is a feature** — a persistent health record (start count, last tick, tick failures, last error) plus request/command logs make service-lifecycle problems visible from the dashboard on real hardware.
+5. **Relay is opt-in** — `server-relay/` (Node.js) mirrors one or more TVs over WebSocket when a relay URL is configured. It is the only component the agent "phones home" to.
 
-2. **Parent Dashboard (Web)** — served by the agent itself
-   - Vanilla HTML/JS/CSS, works in any smartphone/desktop browser on the LAN.
-   - The same dashboard is also served by an optional **relay server**
-     (`server-relay/`, Node.js) that aggregates multiple TVs from one computer.
+## 2. System architecture
 
----
+```
+                    ┌──────────────────────────────────────────────┐
+                    │                  Fire TV                      │
+   parent browser   │  EmbeddedServer (HTTP :8080, zero-dep)        │
+   ───────────────► │  ├─ static dashboard  (GET /, /static/*)      │
+   (any device      │  ├─ /api/login  /api/state  /api/history      │
+    on the LAN)     │  └─ /api/config /api/command  (auth required) │
+                    │                                               │
+                    │  AgentService (foreground; 30s tick loop)     │
+                    │  ├─ UsageTracker   → per-app screen time      │
+                    │  ├─ PolicyManager  → limit/curfew/blacklist   │
+                    │  ├─ LockOverlay    → SYSTEM_ALERT_WINDOW lock │
+                    │  ├─ AdbClient      → local adbd :5555         │
+                    │  └─ DeviceStore    → history/ log/ health     │
+                    │  └─ AgentSocket    → relay (only if URL set)  │
+                    └───────────────┬──────────────▲────────────────┘
+                                    │ ws://host:3000/ws (optional)
+                                    ▼
+                        server-relay/ (Node.js, ws only)
+                        aggregates N TVs; same dashboard served
+```
 
-## 3. Core Features & Functional Specs
+### Components
 
-### 3.1 Usage Tracking & Time Management
-- **Active App Detection:** Polls current foreground package via `UsageStatsManager` or `dumpsys window`.
-- **Session & Daily Timers:** Tracks cumulative time spent across streaming applications (e.g., YouTube, Netflix).
-- **Time Limits & Curfews:** Configurable daily allowances (e.g., max 2 hours/day) and blackout windows (e.g., block after 8:00 PM).
+| Component | Tech | Role |
+| --- | --- | --- |
+| `agent/` | Kotlin, min API 23 (Android 6.0) | Fire TV agent: tracking, enforcement, embedded server, persistence, optional relay client |
+| `EmbeddedServer` | Kotlin (JDK sockets) | Thread-per-request HTTP/1.1; static assets + REST; password auth (header/query/body) |
+| `DeviceStore` | Kotlin (JSON files) | Per-day history (atomic tmp+rename), capped activity log (200), health record |
+| `AdbClient` | Kotlin (raw ADB wire) | 24-byte LE framing, CNXN/AUTH handshake, key registration; DEVICE and HOST_BRIDGE modes |
+| `LockOverlay` | Kotlin (WindowManager) | Full-screen lock overlay |
+| `UsageTracker` | Kotlin (UsageStatsManager) | Per-package foreground ms for the current day; foreground app from usage events |
+| `AgentSocket` | Kotlin (OkHttp WS) | Optional relay push: hello/usage/log; receives welcome/config/command |
+| `server-relay/` | Node.js (`ws`) | Optional aggregation server; same REST contract + dashboard |
+| Dashboard | Vanilla HTML/CSS/JS | Served identically by the embedded server and the relay |
 
-### 3.2 Lock Screen & Enforcement
-- **Overlay Enforcement:** Displays a full-screen lock overlay (`SYSTEM_ALERT_WINDOW`) when screen time limits are reached.
-- **App Termination:** Sends ADB commands (`input keyevent 3` / `am force-stop <package>`) to force the user back to the home screen or kill blacklisted apps.
+## 3. Agent internals
 
-### 3.3 Remote Control & Commands
-- **Pause / Play Remote:** Parents can trigger media key events (`input keyevent 127` / `126`) from the web dashboard.
-- **Instant Lockdown:** A "Pause TV Now" toggle on the web app immediately locks the Firestick interface.
+### 3.1 Lifecycle
 
----
+- `AgentService` is a foreground service (`START_STICKY`, dataSync type) with a notification.
+- Started by `MainActivity` (user), `AgentAccessibilityService.onServiceConnected` (watchdog), or `BootReceiver` (boot).
+- `onCreate`: init store (`bumpServiceStart`, `sweep(90d)`), start `EmbeddedServer`, start relay socket if a URL is set, start the 30s loop.
+- `onDestroy`: cancel loop, stop socket/server, hide overlay.
+- `RECONFIGURE`: restarts the relay socket when prefs change.
 
-## 4. Technical Feasibility & Android/Fire OS Permissions
+### 3.2 Tick loop (every 30 s)
 
-Fire OS restricts standard Android settings screens for key permissions. The following permissions and privileges are required:
+1. `UsageTracker.usageToday()` → per-app ms (absolute totals).
+2. `foregroundApp()` → current package (from usage events, not removed `runningTasks` API).
+3. Enforce: blacklisted foreground app → `force-stop` + home; limit/curfew/lockdown → show overlay + home; else hide overlay.
+4. `DeviceStore.recordUsage(today, apps)` + `noteTick()`.
+5. If relay connected: `send(usage{deviceId,date,apps,totalMs,currentApp,locked})`.
+6. Any exception → `noteTickFailure(e)` (health record) — the loop survives.
 
-| Feature / Action | Required Permission / OS Capability | Fire OS Status & Setup Method |
-| :--- | :--- | :--- |
-| **Foreground App Tracking** | `android.permission.PACKAGE_USAGE_STATS` | Hidden UI. Granted via ADB: `adb shell pm grant <package> android.permission.PACKAGE_USAGE_STATS` |
-| **Lock Screen Overlay** | `android.permission.SYSTEM_ALERT_WINDOW` | Restricted. Granted via ADB: `adb shell appops set <package> SYSTEM_ALERT_WINDOW allow` |
-| **App Interception** | `BIND_ACCESSIBILITY_SERVICE` | Supported. Enabled via Fire TV Settings > Accessibility or via ADB shell commands |
-| **System Key Injection / Killing** | Local ADB Loopback (`127.0.0.1:5555`) | ADB Debugging must be toggled ON in Fire TV Developer Options |
+### 3.3 Embedded server (REST contract)
 
----
+Auth: password from `x-parent-password` header, or `password` query/body. Unauthenticated `/api/*` → 401. Static paths are public.
 
-## 5. Deployment & Setup Workflow
+| Route | Handler | Notes |
+| --- | --- | --- |
+| `GET /` , `GET /static/*` | assets from `assets/www/` | mirror of `server-relay/public/` |
+| `POST /api/login` | `{password}` | → `{ok}` / 401 |
+| `GET /api/state` | `{defaultPolicy, devices{}, usage{}}` | device: online, lastSeen, currentApp, locked, totalMs, policy, **log**, **health**, serverPort |
+| `GET /api/history?days=` | `{deviceId, days, today, history[]}` | oldest→newest, 1–365 days |
+| `POST /api/config` | `{policy}` | normalizes + applies + persists policy |
+| `POST /api/command` | `{command:{type,pkg?}}` | dispatches; unknown type → 400 |
 
-Because this relies on system-level developer permissions, it cannot be distributed via the Amazon Appstore.
+### 3.4 Persistence (DeviceStore)
 
-1. **Enable Developer Options:** Toggle **ADB Debugging** and **Apps from Unknown Sources** on the Fire TV device.
-2. **Sideload Application:** Install the compiled `ScreenTamer.apk` using standard ADB (`adb install FireGuard.apk`).
-3. **Execute Post-Install ADB Script:** Run a script to grant hidden app ops and permissions:
-   ```bash
-   adb shell pm grant com.example.fireguard android.permission.PACKAGE_USAGE_STATS
-   adb shell appops set com.example.fireguard SYSTEM_ALERT_WINDOW allow
-   adb shell settings put secure enabled_accessibility_services com.example.fireguard/.AccessibilityService
-   ```
-4. **Pair with Dashboard:** Open `http://<fire-tv-ip>:8080/` in any browser
-   (or `adb forward tcp:8080 tcp:8080` from a computer). Enter the dashboard
-   password on the TV to lock/unlock and set policies. For multi-TV setups,
-   optionally set a relay URL (`ws://<server>:3000/ws`) in the agent app to
-   mirror usage/logs to the relay's dashboard.
+```
+files/data/
+├── history/<yyyy-mm-dd>.json    # {pkg: msToday} per day, atomic writes
+├── log.json                     # [{ts, msg}] capped at 200
+└── health.json                  # see §6
+```
 
----
+Retention: 90 days, swept on service start.
 
-## 6. Out of Scope / Known Technical Limitations
+### 3.5 Enforcement model
 
-- **Detailed Content History:** Due to DRM and sandbox encryption, tracking specific video titles or watch history within 3rd-party apps (e.g., specific YouTube videos or Netflix shows) is **not possible**. Only application package usage duration can be recorded.
-- **Background Service Persistence:** Fire OS aggressive memory management may occasionally terminate background services; local watchdogs or accessibility bindings are required to auto-restart the agent app.
+| Policy | Condition | Agent action |
+| --- | --- | --- |
+| Daily limit | `totalMsToday ≥ dailyLimitMs` | overlay + home key |
+| Curfew | clock inside window (wraps midnight) | overlay + home key |
+| Blacklist | app is foreground + listed | `am force-stop` + home key, no overlay |
+| Lockdown | `lockdown: true` (Lock Now) | overlay until unlocked |
+| Media | command | `keyevent 127` pause / `126` play / `3` home |
+
+Overlay releases automatically when the condition clears; the policy survives reboots (`last_policy` pref).
+
+### 3.6 ADB client
+
+- Raw wire protocol: 24-byte little-endian headers, `CNXN` hello, `AUTH` token → RSA signature → public-key registration (Fire TV accepts without dialog).
+- `DEVICE` mode: loopback `127.0.0.1:5555` (production).
+- `HOST_BRIDGE` mode: desktop adb server + `host:transport:<id>` (test rig / parent-machine bridging). This is how the emulator rig works: host `adb -a server start`, agent connects to `10.0.2.2:5037`, transport `emulator-5554`.
+
+## 4. Relay (`server-relay/`)
+
+- `ws://<host>:3000/ws`; agents push `hello` (token-paired), `usage` (heartbeat every 30s), `log`; relay sends `welcome`/`config` (policy) and `command`.
+- REST contract identical to the agent's embedded server (dashboard client works against either).
+- State persists to `data/state.json` + `data/history/<deviceId>/<yyyy-mm-dd>.json`; liveness sweep marks agents offline after 45 s silence; history pruned after 90 days.
+- Console access log (`[http]`/`[ws]`) covers requests, connects, hellos, usage, logs, rejections and disconnects.
+
+## 5. Dashboard (shared frontend)
+
+- On-demand data flow: `loadData()` = `Promise.all(/api/state, /api/history)` on boot, Refresh button, and after every command/policy save. `x-parent-password` header on every call.
+- Devices view: cards (online, model/OS, current app, locked, today total), actions (lock/unlock/pause/play/home/force-stop), policy editor (limit/curfew/blacklist), activity log, health.
+- Reports view: 14-day chart + today/yesterday/week/avg stats; per-day per-app breakdown with day navigation; day labels trust the server's `today` over the browser clock (timezone safety).
+
+## 6. Observability
+
+| Signal | Where | Purpose |
+| --- | --- | --- |
+| `health.json` | dashboard device card | `startCount`, `lastStartAt`, `lastTickAt`, `tickFailures`, `lastError{ts,msg,trace}` — detect dead service / crash loops on hardware |
+| HTTP access log | logcat `EmbeddedServer` / relay console | `[http] METHOD path -> status (ms)` |
+| Activity log | dashboard | policy changes, commands (+ adb ok/FAILED), enforcement events, relay connect/disconnect, failed logins |
+| Tick summary | logcat | `totalMs=… apps=N current=…` |
+
+Failed dashboard logins are logged (logcat always; device log for non-empty password attempts).
+
+## 7. Permissions & deployment
+
+| Capability | Permission | Grant path |
+| --- | --- | --- |
+| Usage tracking | `PACKAGE_USAGE_STATS` | `pm grant` (script) |
+| Lock overlay | `SYSTEM_ALERT_WINDOW` | `appops set … allow` (script) |
+| Watchdog / auto-restart | `BIND_ACCESSIBILITY_SERVICE` | `settings put secure enabled_accessibility_services …` |
+| Media keys / force-stop | adbd loopback | Fire TV Developer Options: ADB Debugging ON |
+
+Setup: build APK → sideload → `scripts/setup-firestick.sh` (grants + prefs injection: password, port, optional relay URL).
+
+## 8. Security model
+
+- Shared parent password (configurable per device; relay has its own). Sent in body/header; nothing stored client-side beyond the browser's localStorage.
+- Relay pairing requires the device token; wrong token/password are rejected and logged.
+- Relay URL blank ⇒ the agent makes no outbound connection.
+- ADB loopback is root-adjacent by nature; treat the APK as trusted.
+- Not hardened for the public internet: use VPN/SSH tunnels if exposing.
+
+## 9. Testing strategy
+
+| Suite | Scope | Command |
+| --- | --- | --- |
+| Smoke | Relay REST/WS contract (17 checks) | `npm test` (in `server-relay/`) |
+| Headless | Dashboard in real Chromium, real data, no JS errors | `npm run test:headless` |
+| E2E | Emulator: home → lock → unlock → curfew → restore → history → dashboard, 18 checks + screenshots/evidence | `npm run test:e2e` |
+
+E2E/headless target either server via `DASH_URL` (+ `DASH_PASSWORD` for the embedded server). Evidence (screenshots, state/health snapshot, history JSON, results) lands in `evidence/e2e-<timestamp>/` and is committed to the repo.
+
+## 10. Out of scope / limitations
+
+- No content-level tracking (DRM prevents title-level detail) — package durations only.
+- Fire OS may kill the service; the watchdog revives it (observable via the health record).
+- No binaries shipped; build from source.
+- Single-parent-password model; no per-child accounts.
+- Relay is single-user; no TLS by default (LAN/VPN only).

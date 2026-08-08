@@ -35,7 +35,21 @@ function fmtTime(ts) {
 function fmtDateTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
-  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** One-line agent health summary (observability): start count, ticks, failures. */
+function healthLine(d) {
+  const h = d.health;
+  if (!h || typeof h !== 'object' || !h.startCount) return 'agent health: not reported yet';
+  const parts = [`service started ${h.startCount}×`];
+  if (h.lastStartAt) parts.push(`last start ${fmtTime(h.lastStartAt)}`);
+  if (h.lastTickAt) parts.push(`last tick ${fmtTime(h.lastTickAt)}`);
+  parts.push(`tick failures ${h.tickFailures || 0}`);
+  const err = h.lastError;
+  let line = parts.join(' · ');
+  if (err && err.ts) line += ` · last error ${fmtTime(err.ts)}: ${escapeHtml(err.msg || '')}`;
+  return line;
 }
 
 function fmtDay(dateKey) {
@@ -433,6 +447,7 @@ function deviceCard(d) {
       <div class="log-list">
         ${(d.log || []).map((l) => `<div><time title="${fmtDateTime(l.ts)}">${fmtTime(l.ts)}</time>${escapeHtml(l.msg)}</div>`).join('') || '<div>no activity yet</div>'}
       </div>
+      <div class="health muted" style="margin-top:8px;font-size:12px">${healthLine(d)}</div>
     </div>
   `;
 
