@@ -481,7 +481,7 @@ class AgentService : Service() {
         )
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.mipmap.ic_app_icon)
                 .setContentTitle(getString(R.string.notif_title))
                 .setContentText(getString(R.string.notif_text))
                 .setContentIntent(openIntent)
@@ -490,7 +490,7 @@ class AgentService : Service() {
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(this)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.mipmap.ic_app_icon)
                 .setContentTitle(getString(R.string.notif_title))
                 .setContentText(getString(R.string.notif_text))
                 .setContentIntent(openIntent)

@@ -17,7 +17,7 @@ android {
         applicationId = "com.screentamer.agent"
         minSdk = 23
         targetSdk = 33
-        versionCode = 1
+        versionCode = 2
         versionName = "0.1.${gitHash()}"
     }
 
