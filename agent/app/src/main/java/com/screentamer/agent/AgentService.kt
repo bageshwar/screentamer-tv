@@ -94,6 +94,8 @@ class AgentService : Service() {
     @Volatile
     private var locked: Boolean = false
 
+    private var lastUpdateCheckTime = 0L
+
     private val deviceId: String
         get() = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
 
@@ -220,6 +222,7 @@ class AgentService : Service() {
     private val commandTypes = setOf(
         Protocol.CMD_PAUSE, Protocol.CMD_PLAY, Protocol.CMD_HOME,
         Protocol.CMD_STOP_APP, Protocol.CMD_LOCK, Protocol.CMD_UNLOCK,
+        Protocol.CMD_CHECK_UPDATE
     )
 
     private fun normalizePolicy(raw: JSONObject): JSONObject {
@@ -253,6 +256,11 @@ class AgentService : Service() {
             .put("health", store.health())
             .put("serverPort", Prefs.serverPort(this))
             .put("iconEndpoint", true)
+            .put("update", JSONObject()
+                .put("hasUpdate", com.screentamer.agent.core.UpdateManager.hasUpdate)
+                .put("latestVersion", com.screentamer.agent.core.UpdateManager.latestVersionName)
+                .put("downloadUrl", com.screentamer.agent.core.UpdateManager.latestApkUrl)
+            )
         return JSONObject()
             .put("defaultPolicy", policy.defaultPolicy())
             .put("devices", JSONObject().put(deviceId, device))
@@ -339,6 +347,13 @@ class AgentService : Service() {
                         locked = locked,
                     )
                 )
+            }
+
+            // 4. Update check (once every 24 hours, or immediately on start)
+            val now = System.currentTimeMillis()
+            if (now - lastUpdateCheckTime > 24 * 60 * 60 * 1000L) {
+                lastUpdateCheckTime = now
+                com.screentamer.agent.core.UpdateManager.checkForUpdates()
             }
         } catch (e: Exception) {
             Log.e(TAG, "tick failed: ${e.message}", e)
@@ -449,6 +464,12 @@ class AgentService : Service() {
                 locked = false
                 overlay.hide()
                 log("command: unlocked")
+            }
+            Protocol.CMD_CHECK_UPDATE -> {
+                log("command: checking for updates")
+                com.screentamer.agent.core.UpdateManager.checkForUpdates { hasUpdate ->
+                    log("update check complete: hasUpdate=$hasUpdate version=${com.screentamer.agent.core.UpdateManager.latestVersionName}")
+                }
             }
         }
     }

@@ -358,6 +358,17 @@ function render() {
   renderStatus('act', device);
   renderStatus('set', device);
   renderSettings();
+
+  if (!bannerTimer) {
+    const b = $('#banner');
+    if (device && device.update && device.update.hasUpdate) {
+      const dlLink = device.update.downloadUrl || 'https://github.com/bageshwar/screentamer-tv/releases';
+      b.innerHTML = `★ <strong>Update Available:</strong> A new version <code>${escapeHtml(device.update.latestVersion)}</code> is available. <a href="${dlLink}" target="_blank" style="color:inherit;text-decoration:underline">Download APK</a>`;
+      b.classList.remove('hidden');
+    } else {
+      b.classList.add('hidden');
+    }
+  }
 }
 
 /** Fill a status strip: (status|act|set)Dot/Name/Meta/NowPlaying/Badges. */
@@ -770,6 +781,12 @@ $('#view-settings').addEventListener('click', (e) => {
   const act = el.dataset.act;
   const policy = selectedDevice()?.policy || {};
 
+  if (act === 'checkUpdate') {
+    showBanner('Checking for updates on the TV...');
+    sendCommand(deviceId, { type: 'checkUpdate' });
+    setTimeout(loadData, 3000);
+    return;
+  }
   if (act === 'stopApp') {
     const pkg = $('#stopSelect').value;
     if (pkg) sendCommand(deviceId, { type: 'stopApp', pkg });

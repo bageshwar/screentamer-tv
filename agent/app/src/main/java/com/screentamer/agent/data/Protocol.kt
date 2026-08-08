@@ -24,6 +24,7 @@ object Protocol {
     const val CMD_STOP_APP = "stopApp"
     const val CMD_LOCK = "lock"
     const val CMD_UNLOCK = "unlock"
+    const val CMD_CHECK_UPDATE = "checkUpdate"
 
     fun hello(token: String, deviceId: String, name: String, model: String, version: String): JSONObject =
         JSONObject()

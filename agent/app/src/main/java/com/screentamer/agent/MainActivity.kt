@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStatus: TextView
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
+    private lateinit var btnCheckUpdates: Button
     private lateinit var btnTabDash: Button
     private lateinit var btnTabRelay: Button
     private lateinit var btnTabDevice: Button
@@ -61,6 +62,7 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
+        btnCheckUpdates = findViewById(R.id.btnCheckUpdates)
         btnTabDash = findViewById(R.id.btnTabDash)
         btnTabRelay = findViewById(R.id.btnTabRelay)
         btnTabDevice = findViewById(R.id.btnTabDevice)
@@ -135,11 +137,32 @@ class MainActivity : AppCompatActivity() {
             Log.i(TAG, "opening in-TV dashboard")
             startActivity(Intent(this, DashboardActivity::class.java))
         }
+        btnCheckUpdates.setOnClickListener {
+            btnCheckUpdates.isEnabled = false
+            btnCheckUpdates.text = "Checking..."
+            com.screentamer.agent.core.UpdateManager.checkForUpdates { hasUpdate ->
+                runOnUiThread {
+                    btnCheckUpdates.isEnabled = true
+                    btnCheckUpdates.text = "Check for Updates"
+                    if (hasUpdate) {
+                        toast("New update available: ${com.screentamer.agent.core.UpdateManager.latestVersionName}")
+                    } else {
+                        toast("App is up to date")
+                    }
+                    renderStatus()
+                }
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
         renderStatus()
+        com.screentamer.agent.core.UpdateManager.checkForUpdates { updated ->
+            if (updated) {
+                runOnUiThread { renderStatus() }
+            }
+        }
     }
 
     private fun selectTab(tab: Int) {
@@ -221,6 +244,11 @@ class MainActivity : AppCompatActivity() {
         line("Server: ${Prefs.serverUrl(this).ifBlank { "<not set>" }}")
         line("Dashboard: $dashboardUrl")
         line("Device ID: ${Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"}")
+        if (com.screentamer.agent.core.UpdateManager.hasUpdate) {
+            line("")
+            line("★ UPDATE AVAILABLE: ${com.screentamer.agent.core.UpdateManager.latestVersionName}", bad)
+            line("Download: ${com.screentamer.agent.core.UpdateManager.latestApkUrl.ifEmpty { "github.com/bageshwar/screentamer-tv/releases" }}", bad)
+        }
         tvStatus.text = sp
 
         // Active-state emphasis: the relevant control is the primary (filled)
