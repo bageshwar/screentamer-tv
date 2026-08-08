@@ -309,6 +309,11 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, fs.readFileSync(file), MIME[path.extname(file)] || 'application/octet-stream');
   }
 
+  if (req.method === 'GET' && url.pathname === '/favicon.ico') {
+    res.writeHead(302, { 'Location': '/static/favicon.svg' });
+    return res.end();
+  }
+
   // Mimic the agent's real device-icon endpoint: known apps resolve to a
   // bundled brand SVG (the agent would return the actual PNG here), unknown
   // packages 404 so the dashboard falls back to the letter avatar.

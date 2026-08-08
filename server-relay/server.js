@@ -90,7 +90,7 @@ const server = http.createServer(async (req, res) => {
     return serveFile(path.join(PUBLIC_DIR, url.pathname.replace('/static/', '')), res);
   }
   if (req.method === 'GET' && url.pathname === '/favicon.ico') {
-    res.writeHead(204);
+    res.writeHead(302, { 'Location': '/static/favicon.svg' });
     return res.end();
   }
 

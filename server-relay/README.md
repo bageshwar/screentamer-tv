@@ -29,7 +29,7 @@ First run generates `data/config.json` (print the secrets once, on the console):
 }
 ```
 
-- Dashboard: `http://<server-ip>:3000/`
+- Dashboard: `http://screentamer.local:3000/` (or `http://<server-ip>:3000/`)
 - Agent relay URL: `ws://<server-ip>:3000/ws`
 - On each TV's agent app: set the relay URL + pairing token (the device token).
 

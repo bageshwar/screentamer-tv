@@ -10,24 +10,13 @@
         </shape>
     </item>
     <item android:state_focused="true">
-        <layer-list>
-            <item>
-                <shape android:shape="rectangle">
-                    <solid android:color="@color/accent_bright" />
-                    <corners android:radius="12dp" />
-                </shape>
-            </item>
-            <item
-                android:left="8dp"
-                android:top="8dp"
-                android:right="8dp"
-                android:bottom="8dp">
-                <shape android:shape="rectangle">
-                    <solid android:color="#182338" />
-                    <corners android:radius="8dp" />
-                </shape>
-            </item>
-        </layer-list>
+        <shape android:shape="rectangle">
+            <solid android:color="#182338" />
+            <stroke
+                android:width="4dp"
+                android:color="@color/accent_bright" />
+            <corners android:radius="12dp" />
+        </shape>
     </item>
     <item>
         <shape android:shape="rectangle">

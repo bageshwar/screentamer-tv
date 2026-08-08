@@ -34,7 +34,7 @@ Fire TV has no built-in per-app screen-time limits. This project builds a comple
 
 ## Features
 
-- Embedded **parent dashboard** served by the agent on `http://<tv-ip>:8080/`
+- Embedded **parent dashboard** served by the agent on `http://<device-hostname>.local:8080/` (or by IP `http://<tv-ip>:8080/`)
   — no server process to host.
 - On-demand UI: refresh button + reload after every action (no polling, no push).
 - Daily time limits, curfew windows (wraps midnight), package blacklists.
@@ -130,14 +130,14 @@ Open the ScreenTamer app on the TV and set:
 - **Relay server URL** — leave blank for device-only mode.
 
 Press **Save & Restart Service**, then **Test Local ADB** to verify the loopback
-channel. The agent is live when the status shows `Dashboard: http://<this-device>:8080`.
+channel. The agent is live when the status shows the `.local` URL (e.g. `Dashboard: http://firetv.local:8080`).
 
 > First ADB loopback connection: the agent generates its own RSA key, presents
 > it to adbd, and Fire TV registers it without a confirmation dialog.
 
 ## Using the dashboard
 
-Open `http://<fire-tv-ip>:8080/` from any browser on your LAN (or from a
+Open `http://<device-hostname>.local:8080/` or `http://<fire-tv-ip>:8080/` from any browser on your LAN (or from a
 computer via `adb forward tcp:8080 tcp:8080` → `http://127.0.0.1:8080/`).
 
 The dashboard is one responsive UI with three tabs, styled per client: the
@@ -193,7 +193,7 @@ agent app, set:
 - **Relay server URL**: `ws://<server-ip>:3000/ws`
 - **Pairing token**: the token from `config.json`
 
-The relay dashboard: `http://<server-ip>:3000/`. With no relay configured the
+The relay dashboard is available at `http://screentamer.local:3000/` (or `http://<server-ip>:3000/`). With no relay configured the
 agent is fully self-sufficient and never phones home.
 
 ## Policy & enforcement model

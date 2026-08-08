@@ -4,25 +4,28 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Shield + clock motif, scaled into the adaptive-icon safe zone. -->
+    <!-- Shield + TV motif, scaled into the adaptive-icon safe zone. -->
     <group
         android:scaleX="0.62"
         android:scaleY="0.62"
         android:pivotX="54"
         android:pivotY="54">
+        <!-- White Shield -->
         <path
-            android:fillColor="#1B2A41"
-            android:pathData="M54,4 L96,22 L96,54 C96,76 78,92 54,104 C30,92 12,76 12,54 L12,22 Z" />
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,5 L96,24 V52 C96,74 80,91 54,103 C28,91 12,74 12,52 V24 Z" />
+        <!-- TV Screen Outline -->
         <path
-            android:strokeColor="#2F81F7"
-            android:strokeWidth="5"
+            android:strokeColor="#0F766E"
+            android:strokeWidth="6"
             android:fillColor="#00000000"
-            android:pathData="M54,54 m-24,0 a24,24 0 1,0 48,0 a24,24 0 1,0 -48,0" />
+            android:pathData="M36,32 H72 A6,6 0 0 1 78,38 V62 A6,6 0 0 1 72,68 H36 A6,6 0 0 1 30,62 V38 A6,6 0 0 1 36,32 Z" />
+        <!-- TV Stand -->
         <path
-            android:strokeColor="#E6EDF3"
-            android:strokeWidth="5"
+            android:strokeColor="#0F766E"
+            android:strokeWidth="6"
             android:strokeLineCap="round"
             android:fillColor="#00000000"
-            android:pathData="M54,40 L54,54 L66,60" />
+            android:pathData="M45,66 H63 M38,74 H70" />
     </group>
 </vector>
