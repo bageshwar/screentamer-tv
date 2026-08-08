@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
 }
@@ -11,7 +14,7 @@ fun gitHash(): String = try {
 
 android {
     namespace = "com.screentamer.agent"
-    compileSdk = 37
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.screentamer.agent"
@@ -25,9 +28,36 @@ android {
         buildConfig = true
     }
 
+    val localProperties = Properties()
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        FileInputStream(localPropertiesFile).use { localProperties.load(it) }
+    }
+
+    val releaseKeystorePath = localProperties.getProperty("release.keystore.path")
+    val releaseKeystorePassword = localProperties.getProperty("release.keystore.password")
+    val releaseKeyAlias = localProperties.getProperty("release.key.alias")
+    val releaseKeyPassword = localProperties.getProperty("release.key.password")
+
+    val hasSigningConfig = releaseKeystorePath != null && releaseKeystorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null
+
+    if (hasSigningConfig) {
+        signingConfigs {
+            create("release") {
+                storeFile = rootProject.file(releaseKeystorePath!!)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -36,15 +66,13 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 }
 
 kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-    }
+    jvmToolchain(17)
 }
 
 dependencies {

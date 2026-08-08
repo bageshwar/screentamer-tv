@@ -13,3 +13,5 @@ session-*.md
 art/options/
 evidence/
 **/evidence/
+*.jks
+local-dev-queue.md
