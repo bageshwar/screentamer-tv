@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScreenTamer — Parent Dashboard</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <div class="card login-card">
+      <h1>ScreenTamer</h1>
+      <p class="muted">Parent dashboard</p>
+      <input id="password" type="password" placeholder="Parent password" autocomplete="current-password" />
+      <button id="loginBtn" class="btn primary">Unlock dashboard</button>
+      <p id="loginError" class="error hidden">Wrong password</p>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="brand">
+        <h1>ScreenTamer</h1>
+        <span id="connDot" class="dot off"></span>
+        <span id="connText" class="muted">offline</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="refreshBtn" class="btn">Refresh</button>
+        <button id="logoutBtn" class="btn subtle">Log out</button>
+      </div>
+    </header>
+
+    <div class="banner hidden" id="banner"></div>
+
+    <div id="devices" class="devices"></div>
+
+    <div id="noDevices" class="empty hidden">
+      <h2>No devices yet</h2>
+      <p class="muted">Install the agent APK on a Fire TV, run the setup script, and refresh.</p>
+    </div>
+
+    <section id="reports" class="reports hidden">
+      <div class="reports-head">
+        <h2>Reports</h2>
+        <div class="report-actions">
+          <select id="reportDevice" class="btn" title="Device"></select>
+          <span id="reportRange" class="muted"></span>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat card"><div class="stat-label">Today</div><div class="stat-value" id="statToday">—</div></div>
+        <div class="stat card"><div class="stat-label">Yesterday</div><div class="stat-value" id="statYesterday">—</div></div>
+        <div class="stat card"><div class="stat-label">Last 7 days</div><div class="stat-value" id="statWeek">—</div></div>
+        <div class="stat card"><div class="stat-label">Daily average (7d)</div><div class="stat-value" id="statAvg">—</div></div>
+      </div>
+
+      <div class="card chart-card">
+        <h3>Screen time — last 14 days</h3>
+        <p class="muted" style="font-size:12px">Click a bar to inspect that day's apps.</p>
+        <canvas id="dailyChart" height="220"></canvas>
+      </div>
+
+      <div class="card chart-card">
+        <div class="chart-head">
+          <h3>Per-app breakdown</h3>
+          <span id="appDayLabel" class="muted"></span>
+          <div class="day-nav">
+            <button id="dayPrev" class="btn sm">‹</button>
+            <button id="dayToday" class="btn sm">Today</button>
+            <button id="dayNext" class="btn sm">›</button>
+          </div>
+        </div>
+        <div id="appBreakdown" class="breakdown"><div class="muted">no data for this day</div></div>
+      </div>
+    </section>
+
+    <footer class="muted footer">ScreenTamer hobby project — parental control for your own Fire TV devices.</footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

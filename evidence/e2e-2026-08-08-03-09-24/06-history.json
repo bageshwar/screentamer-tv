@@ -1,0 +1,81 @@
+{
+  "deviceId": "9d4a2d25e2f1bff2",
+  "days": 14,
+  "today": "2026-08-08",
+  "history": [
+    {
+      "date": "2026-07-26",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-07-27",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-07-28",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-07-29",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-07-30",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-07-31",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-08-01",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-08-02",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-08-03",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-08-04",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-08-05",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-08-06",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-08-07",
+      "totalMs": 0,
+      "apps": {}
+    },
+    {
+      "date": "2026-08-08",
+      "totalMs": 3087883,
+      "apps": {
+        "com.android.tv.settings": 118003,
+        "com.android.tv.provision": 104,
+        "com.google.android.tvlauncher": 2969776
+      }
+    }
+  ]
+}

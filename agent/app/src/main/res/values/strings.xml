@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ScreenTamer</string>
+    <string name="accessibility_description">ScreenTamer uses the accessibility service as a watchdog to keep the parental control agent alive on this Fire TV, and to assist with returning to the home screen when limits are hit.</string>
+
+    <string name="settings_title">ScreenTamer Agent Settings</string>
+    <string name="label_server_url">Relay server URL (optional, ws://192.168.1.10:3000/ws)</string>
+    <string name="label_token">Pairing token</string>
+    <string name="label_device_name">Device name shown to parents</string>
+    <string name="label_adb_port">Local ADB loopback port</string>
+    <string name="label_password">Dashboard password (on-device server)</string>
+    <string name="label_dash_port">Dashboard port (on-device server)</string>
+    <string name="btn_save">Save &amp; Restart Service</string>
+    <string name="btn_start">Start Agent</string>
+    <string name="btn_stop">Stop Agent</string>
+    <string name="btn_test_adb">Test Local ADB</string>
+    <string name="btn_lock">Lock Now</string>
+    <string name="btn_unlock">Unlock Now</string>
+    <string name="hint_url">ws://192.168.1.10:3000/ws</string>
+    <string name="hint_token">token printed by the server on first run</string>
+    <string name="hint_name">Living Room Fire Stick</string>
+    <string name="hint_port">5555</string>
+    <string name="hint_password">password parents use in the dashboard</string>
+    <string name="hint_dash_port">8080</string>
+    <string name="status_default">Agent service: stopped</string>
+
+    <string name="overlay_title">ScreenTamer</string>
+    <string name="overlay_locked">This screen is locked by ScreenTamer</string>
+    <string name="overlay_subtitle">Screen time limit reached — ask a parent to unlock</string>
+
+    <string name="notif_channel">screentamer</string>
+    <string name="notif_channel_name">ScreenTamer agent</string>
+    <string name="notif_title">ScreenTamer is active</string>
+    <string name="notif_text">Monitoring screen time</string>
+</resources>

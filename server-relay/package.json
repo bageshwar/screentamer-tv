@@ -1,0 +1,22 @@
+{
+  "name": "screentamer-server-relay",
+  "version": "0.1.0",
+  "description": "ScreenTamer optional relay: mirrors agent telemetry and serves the parent dashboard for multi-TV setups",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/smoke.js",
+    "test:headless": "node test/headless/run.js",
+    "test:e2e": "node test/e2e/run.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

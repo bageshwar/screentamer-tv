@@ -1,0 +1,11 @@
+node_modules/
+server/
+server-relay/data/
+server-relay/test/headless/artifacts/
+server-relay/node_modules/
+agent/.gradle/
+agent/build/
+agent/app/build/
+agent/local.properties
+.DS_Store
+*.apk

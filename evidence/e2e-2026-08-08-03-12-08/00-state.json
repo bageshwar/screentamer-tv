@@ -1,0 +1,158 @@
+{
+  "defaultPolicy": {
+    "dailyLimitMs": 0,
+    "curfew": {
+      "enabled": false,
+      "start": "20:00",
+      "end": "06:00"
+    },
+    "blacklist": [],
+    "lockdown": false
+  },
+  "devices": {
+    "9d4a2d25e2f1bff2": {
+      "id": "9d4a2d25e2f1bff2",
+      "name": "Emulator Fire TV",
+      "model": "sdk_google_atv64_arm64",
+      "version": "13",
+      "online": true,
+      "lastSeen": 1786158254161,
+      "currentApp": "com.google.android.tvlauncher",
+      "locked": false,
+      "totalMs": 3087883,
+      "policy": {
+        "dailyLimitMs": 0,
+        "curfew": {
+          "enabled": false,
+          "start": "23:00",
+          "end": "07:00"
+        },
+        "blacklist": [],
+        "lockdown": false
+      },
+      "log": [
+        {
+          "ts": 1786156716830,
+          "msg": "connected to relay server"
+        },
+        {
+          "ts": 1786156716834,
+          "msg": "policy updated from relay: limit=0min curfew=false"
+        },
+        {
+          "ts": 1786157667429,
+          "msg": "connected to relay server"
+        },
+        {
+          "ts": 1786157667430,
+          "msg": "policy updated from relay: limit=0min curfew=false"
+        },
+        {
+          "ts": 1786157704167,
+          "msg": "policy updated from dashboard: limit=120min curfew=false"
+        },
+        {
+          "ts": 1786157709128,
+          "msg": "command: instant lockdown"
+        },
+        {
+          "ts": 1786157712170,
+          "msg": "command: unlocked"
+        },
+        {
+          "ts": 1786157727441,
+          "msg": "blocking blacklisted app com.google.android.tvlauncher"
+        },
+        {
+          "ts": 1786157795309,
+          "msg": "policy updated from dashboard: limit=0min curfew=false"
+        },
+        {
+          "ts": 1786157867899,
+          "msg": "command: go home"
+        },
+        {
+          "ts": 1786157874541,
+          "msg": "command: instant lockdown"
+        },
+        {
+          "ts": 1786157876766,
+          "msg": "command: unlocked"
+        },
+        {
+          "ts": 1786157879391,
+          "msg": "policy updated from dashboard: limit=0min curfew=true"
+        },
+        {
+          "ts": 1786157907487,
+          "msg": "Curfew is active — screen time is paused"
+        },
+        {
+          "ts": 1786157909531,
+          "msg": "policy updated from dashboard: limit=0min curfew=false"
+        },
+        {
+          "ts": 1786157937493,
+          "msg": "unlocked"
+        },
+        {
+          "ts": 1786158006929,
+          "msg": "connected to relay server"
+        },
+        {
+          "ts": 1786158006931,
+          "msg": "policy updated from relay: limit=0min curfew=false"
+        },
+        {
+          "ts": 1786158067542,
+          "msg": "connected to relay server"
+        },
+        {
+          "ts": 1786158067543,
+          "msg": "policy updated from relay: limit=0min curfew=false"
+        },
+        {
+          "ts": 1786158090567,
+          "msg": "command: go home"
+        },
+        {
+          "ts": 1786158097209,
+          "msg": "command: instant lockdown"
+        },
+        {
+          "ts": 1786158099596,
+          "msg": "command: unlocked"
+        },
+        {
+          "ts": 1786158102684,
+          "msg": "policy updated from dashboard: limit=0min curfew=true"
+        },
+        {
+          "ts": 1786158127547,
+          "msg": "Curfew is active — screen time is paused"
+        },
+        {
+          "ts": 1786158130831,
+          "msg": "policy updated from dashboard: limit=0min curfew=false"
+        },
+        {
+          "ts": 1786158157551,
+          "msg": "unlocked"
+        }
+      ],
+      "health": {
+        "startCount": 3,
+        "lastStartAt": 1786158067525,
+        "lastTickAt": 1786158247573
+      },
+      "serverPort": 8080
+    }
+  },
+  "usage": {
+    "9d4a2d25e2f1bff2": {
+      "com.android.tv.settings": 118003,
+      "com.android.tv.provision": 104,
+      "com.google.android.tvlauncher": 2969776
+    }
+  }
+}

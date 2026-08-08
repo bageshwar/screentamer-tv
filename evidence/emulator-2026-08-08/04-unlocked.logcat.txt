@@ -1,0 +1,2 @@
+08-08 07:43:25.343  1239  1239 I LockOverlay: lock overlay hidden
+08-08 07:43:25.376  1079  1079 I DeviceUnlockedTag: DeviceUnlockedTag.notifyDeviceLockStatusChanged():38 Notify device unlocked.
