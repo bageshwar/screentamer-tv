@@ -143,3 +143,15 @@ viewport (touch-target checks) and `?tv=1` (D-pad focus-ring proof) — and
 writes screenshots to `test/headless/artifacts/`.
 
 E2E artifacts land in `evidence/e2e-<timestamp>/` at the repo root.
+
+## Known issues
+
+- **Real device app icons don't load through the relay.** The dashboard's
+  device-icon endpoint (`GET /api/icon?pkg=`) only exists on the agent's
+  embedded server; the relay has no route for it, so `404` responses push the
+  dashboard to its bundled-SVG / letter-avatar fallback chain. Real per-app
+  icons therefore appear only when the dashboard is served directly by the
+  agent (the primary path — `adb forward` + the agent's `serverPort`), not via
+  the relay. Fix idea: proxy `/api/icon` from the relay to the connected agent
+  (same way commands/config are forwarded), or mirror package-name → icon
+  lookups on the relay host.
