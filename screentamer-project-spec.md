@@ -64,11 +64,11 @@ Five principles drive the design:
 
 ### 3.2 Tick loop (every 30 s)
 
-1. `UsageTracker.usageToday()` → per-app ms (absolute totals).
+1. `UsageTracker.snapshot()` → per-app ms today (absolute totals) + the delta since the last tick.
 2. `foregroundApp()` → current package (from usage events, not removed `runningTasks` API).
 3. Enforce: blacklisted foreground app → `force-stop` + home; limit/curfew/lockdown → show overlay + home; else hide overlay.
-4. `DeviceStore.recordUsage(today, apps)` + `noteTick()`.
-5. If relay connected: `send(usage{deviceId,date,apps,totalMs,currentApp,locked})`.
+4. `DeviceStore.recordUsage(today, apps, hourly)` + `noteTick()` — the tick delta is attributed to the current hour's bucket (`_hourly`).
+5. If relay connected: `send(usage{deviceId,date,apps,hourly,totalMs,currentApp,locked})` — `hourly` is the day's full per-hour map (reconnect-safe).
 6. Any exception → `noteTickFailure(e)` (health record) — the loop survives.
 
 ### 3.3 Embedded server (REST contract)
@@ -89,12 +89,15 @@ Auth: password from `x-parent-password` header, or `password` query/body. Unauth
 
 ```
 files/data/
-├── history/<yyyy-mm-dd>.json    # {pkg: msToday} per day, atomic writes
+├── history/<yyyy-mm-dd>.json    # {pkg: msToday, "_hourly": {"<hour>": {pkg: ms}}} per day, atomic writes
 ├── log.json                     # [{ts, msg}] capped at 200
 └── health.json                  # see §6
 ```
 
-Retention: 90 days, swept on service start.
+Retention: 90 days, swept on service start. The `_hourly` key stores per-hour
+per-app buckets (the dashboard's timeline source); it is never counted toward
+daily totals and is stripped from state/history responses where the client
+doesn't need it.
 
 ### 3.5 Enforcement model
 
@@ -116,7 +119,7 @@ Overlay releases automatically when the condition clears; the policy survives re
 
 ## 4. Relay (`server-relay/`)
 
-- `ws://<host>:3000/ws`; agents push `hello` (token-paired), `usage` (heartbeat every 30s), `log`; relay sends `welcome`/`config` (policy) and `command`.
+- `ws://<host>:3000/ws`; agents push `hello` (token-paired), `usage` (heartbeat every 30s, carrying the day's `hourly` per-hour map so the dashboard can draw the timeline), `log`; relay sends `welcome`/`config` (policy) and `command`.
 - REST contract identical to the agent's embedded server (dashboard client works against either).
 - State persists to `data/state.json` + `data/history/<deviceId>/<yyyy-mm-dd>.json`; liveness sweep marks agents offline after 45 s silence; history pruned after 90 days.
 - Console access log (`[http]`/`[ws]`) covers requests, connects, hellos, usage, logs, rejections and disconnects.
@@ -127,7 +130,7 @@ Overlay releases automatically when the condition clears; the policy survives re
   - **Report** (default): device status strip (online/offline dot, model/OS,
     last seen, now playing, lock/blacklist badges), day navigation
     (‹ prev · Today · next ›; chart bars are clickable too), today/yesterday/
-    7-day/average stats, 14-day chart, per-app breakdown.
+    7-day/average stats, 14-day chart, and a per-app breakdown. A **when-apps-were-used timeline** shows the day's hour-by-hour activity: a color band (dominant app per hour, color-blind-safe Okabe-Ito palette) toggleable to per-app lanes with exact hour blocks; the legend uses app icons + durations. Days recorded before the agent collected hourly data fall back to the plain breakdown.
   - **Activity**: per-device log (newest first, "usage reported" heartbeats
     collapsed) + agent health card (start count, last tick, tick failures,
     last error).
@@ -181,8 +184,8 @@ Setup: build APK → sideload → `scripts/setup-firestick.sh` (grants + prefs i
 
 | Suite | Scope | Command |
 | --- | --- | --- |
-| Smoke | Relay REST/WS contract (17 checks) | `npm test` (in `server-relay/`) |
-| Headless | Dashboard in real Chromium, real data, no JS errors; laptop + phone + TV layouts, screenshots | `npm run test:headless` (against relay, `DASH_URL=…:4000 DASH_PASSWORD=demo` for mock) |
+| Smoke | Relay REST/WS contract (20 checks) | `npm test` (in `server-relay/`) |
+| Headless | Dashboard in real Chromium, real data, no JS errors; laptop + phone + TV layouts, timeline band/lanes/toggle, screenshots | `npm run test:headless` (against relay, `DASH_URL=…:4000 DASH_PASSWORD=demo` for mock) |
 | E2E | Emulator: home → lock → unlock → curfew → restore → history → dashboard, 18 checks + screenshots/evidence | `npm run test:e2e` |
 
 Design iteration without any device or APK build: `npm run dev` in

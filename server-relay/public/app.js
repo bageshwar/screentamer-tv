@@ -431,10 +431,8 @@ function renderReport() {
   // Daily bar chart (click a bar to inspect that day).
   drawDailyChart(days);
 
-  // Per-app breakdown for the selected day.
-  const label = $('#appDayLabel');
-  if (day) label.textContent = fmtDay(day.date);
-  drawAppBreakdown(day.apps, day.date);
+  // Timeline ("when apps were used") + per-app totals for the selected day.
+  drawTimeline(day);
 }
 
 function drawDailyChart(days) {
@@ -533,25 +531,40 @@ function drawDailyChart(days) {
   };
 }
 
-// Breakdown: cap rows per client (laptop 8, phone 6 with a "show more"; TV 10).
-let breakdownExpanded = false;
-let breakdownRenderedDay = null;
-
-/** Curated, color-blind-safe palette for per-app usage bars (deterministic per package). */
-const BAR_COLORS = ['#4f8df7', '#5ec8e5', '#3fb950', '#d29922', '#f85149', '#b57edc', '#e58f3c', '#7bd6c9', '#f0a8c8', '#a3c65e'];
+/**
+ * Curated, color-blind-safe palette for per-app usage (deterministic per
+ * package). Okabe-Ito categorical palette (the standard for color-vision
+ * deficiency) extended with 5 well-separated complements for dark UIs.
+ */
+const BAR_COLORS = [
+  '#56B4E9', // sky blue
+  '#E69F00', // orange
+  '#009E73', // bluish green
+  '#D55E00', // vermillion
+  '#CC79A7', // reddish purple
+  '#F0E442', // yellow
+  '#0072B2', // blue
+  '#8E6AD6', // purple
+  '#00B8A9', // teal
+  '#EE3377', // magenta
+  '#A8B84C', // olive
+  '#C45A2C', // rust
+];
 function barColor(pkg) {
   let h = 0;
   for (const ch of pkg) h = (h * 31 + ch.charCodeAt(0)) % 997;
   return BAR_COLORS[h % BAR_COLORS.length];
 }
 
-function drawAppBreakdown(apps, date) {
-  const host = $('#appBreakdown');
+// Breakdown markup: sorted per-app rows with proportional bars. Used as the
+// timeline fallback for days that predate hourly tracking. Capped rows per
+// client (laptop 8, phone 6 with a "show more"; TV 10).
+let breakdownExpanded = false;
+let breakdownRenderedDay = null;
+
+function appBreakdownHTML(apps, date) {
   const entries = Object.entries(apps).sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0) {
-    host.innerHTML = '<div class="muted">no usage recorded for this day</div>';
-    return;
-  }
+  if (entries.length === 0) return '<div class="muted">no usage recorded for this day</div>';
   if (breakdownRenderedDay !== date) {
     breakdownRenderedDay = date;
     breakdownExpanded = false;
@@ -567,7 +580,7 @@ function drawAppBreakdown(apps, date) {
   if (restTotal > 0) rows.push(['__other__', restTotal]);
   const maxMs = Math.max(...rows.map(([, ms]) => ms), 1);
 
-  host.innerHTML = rows
+  return rows
     .map(([pkg, ms]) => `
       <div class="app-row">
         ${pkg === '__other__' ? '<span class="app-icon other">…</span>' : iconHTML(pkg, selectedDevice())}
@@ -577,11 +590,159 @@ function drawAppBreakdown(apps, date) {
       </div>`).join('')
     + `<div class="breakdown-total">Total: ${fmtDuration(entries.reduce((s, [, ms]) => s + ms, 0))} — ${escapeHtml(date)}</div>`
     + (!showAll ? `<button class="btn sm show-more" id="breakdownMore">Show ${entries.length - limit} more apps</button>` : '');
+}
 
-  host.querySelector('#breakdownMore')?.addEventListener('click', () => {
-    breakdownExpanded = true;
-    renderReport();
-  });
+// ---------------------------------------------------------------------------
+// Timeline ("When apps were used"): Option A — a single band showing the
+// dominant app per hour (day at a glance). Toggle to Option B — per-app lanes
+// with exact usage windows. Built from the day's hourly buckets.
+// ---------------------------------------------------------------------------
+
+let timelineMode = 'band'; // 'band' | 'lanes'
+
+function fmtHour(h) {
+  return h === 0 ? '12a' : h < 12 ? `${h}a` : h === 12 ? '12p' : `${h - 12}p`;
+}
+
+/**
+ * Normalize an hourly map ({ "<hour>": { "<pkg>": ms } }) into:
+ *   byHour  — per-hour dominant app
+ *   byApp   — pkg -> { totalMs, hours }
+ *   blocks  — pkg -> [{ start, end, ms }] contiguous usage runs
+ */
+function makeSeries(hourly) {
+  const byHour = [];
+  const byApp = new Map();
+  for (let h = 0; h < 24; h++) {
+    const entries = Object.entries(hourly[String(h)] || {});
+    let best = null;
+    for (const [pkg, ms] of entries) {
+      const acc = byApp.get(pkg) || { totalMs: 0, hours: [] };
+      acc.totalMs += ms;
+      acc.hours.push(h);
+      byApp.set(pkg, acc);
+      if (!best || ms > best[1]) best = [pkg, ms];
+    }
+    byHour.push({ hour: h, pkg: best ? best[0] : null, ms: best ? best[1] : 0 });
+  }
+  const blocks = new Map();
+  for (const [pkg, acc] of byApp) {
+    const hrs = [...acc.hours].sort((a, b) => a - b);
+    const runs = [];
+    let start = null, prev = null;
+    for (const h of hrs) {
+      if (start === null) { start = prev = h; continue; }
+      if (h === prev + 1) { prev = h; continue; }
+      runs.push([start, prev + 1]);
+      start = prev = h;
+    }
+    if (start !== null) runs.push([start, prev + 1]);
+    blocks.set(pkg, runs.map(([s, e]) => {
+      let ms = 0;
+      for (let h = s; h < e; h++) ms += hourly[String(h)]?.[pkg] || 0;
+      return { start: s, end: e, ms };
+    }));
+  }
+  return { byHour, byApp, blocks };
+}
+
+/** Hour-axis labels under the band/lanes; slots of `step` hours keep alignment. */
+function hoursRow(step) {
+  const marks = { 0: '12a', 6: '6a', 12: '12p', 18: '6p' };
+  let out = '';
+  for (let h = 0; h < 24; h += step) {
+    out += `<span>${marks[h] || (h + step >= 24 ? '11p' : '')}</span>`;
+  }
+  return `<div class="tl-hours">${out}</div>`;
+}
+
+/** Option A: one row of cells (one per hour), each colored by its dominant app. */
+function renderTimelineBand(series) {
+  const used = [...series.byApp.entries()].sort((a, b) => b[1].totalMs - a[1].totalMs);
+  const cell = (h) => {
+    const c = series.byHour[h];
+    return c.pkg
+      ? `<div class="tl-cell on" style="background:${barColor(c.pkg)}" title="${fmtHour(h)}–${fmtHour(h)} · ${escapeHtml(appName(c.pkg))} (${fmtDuration(c.ms)})"></div>`
+      : `<div class="tl-cell off" title="${fmtHour(h)}–${fmtHour(h)} · no usage"></div>`;
+  };
+  return `
+    <div class="tl-scroll">
+      <div class="tl-band">${Array.from({ length: 24 }, (_, h) => cell(h)).join('')}</div>
+      ${hoursRow(1)}
+    </div>
+    <div class="tl-legend">${used.map(([pkg, acc]) =>
+      `<span>${iconHTML(pkg, selectedDevice())}<b>${escapeHtml(appName(pkg))}</b><i>${fmtDuration(acc.totalMs)}</i></span>`).join('')}</div>`;
+}
+
+/** Option B: one lane per app with blocks at their exact hours of the day. */
+function renderTimelineLanes(series, hourly) {
+  const isTv = document.body.classList.contains('tv-mode');
+  const isNarrow = window.matchMedia('(max-width: 700px)').matches;
+  const limit = isTv ? 8 : isNarrow ? 5 : 6;
+  const used = [...series.byApp.entries()].sort((a, b) => b[1].totalMs - a[1].totalMs);
+  const top = used.slice(0, limit);
+  const rest = used.slice(limit);
+
+  const lane = (pkg, acc) => `
+    <div class="tl-lane">
+      <div class="tl-lane-label">${iconHTML(pkg, selectedDevice())}<span class="tl-lane-name" title="${escapeHtml(pkg)}">${escapeHtml(appName(pkg))}</span><span class="tl-lane-ms">${fmtDuration(acc.totalMs)}</span></div>
+      <div class="tl-track">${(series.blocks.get(pkg) || []).map((r) =>
+        `<div class="tl-block" style="left:${(r.start / 24) * 100}%;width:${((r.end - r.start) / 24) * 100}%;background:${barColor(pkg)}" title="${fmtHour(r.start)}–${fmtHour(r.end - 1)} · ${fmtDuration(r.ms)}"></div>`).join('')}</div>
+    </div>`;
+
+  let extra = '';
+  if (rest.length > 0) {
+    // Fold remaining apps into one muted lane (any hour where one of them ran).
+    const merged = {};
+    const restPkgs = new Set(rest.map(([p]) => p));
+    for (let h = 0; h < 24; h++) {
+      const ms = Object.entries(hourly[String(h)] || {})
+        .filter(([p]) => restPkgs.has(p))
+        .reduce((a, [, m]) => a + m, 0);
+      if (ms > 0) merged[String(h)] = { __other__: ms };
+    }
+    const otherRuns = makeSeries(merged).blocks.get('__other__') || [];
+    if (otherRuns.length) {
+      const restMs = rest.reduce((s, [, acc]) => s + acc.totalMs, 0);
+      extra = `
+        <div class="tl-lane">
+          <div class="tl-lane-label"><span class="app-icon other">…</span><span class="tl-lane-name">${rest.length} more apps</span><span class="tl-lane-ms">${fmtDuration(restMs)}</span></div>
+          <div class="tl-track">${otherRuns.map((r) =>
+            `<div class="tl-block" style="left:${(r.start / 24) * 100}%;width:${((r.end - r.start) / 24) * 100}%;background:var(--muted)" title="${fmtHour(r.start)}–${fmtHour(r.end - 1)} · ${fmtDuration(r.ms)}"></div>`).join('')}</div>
+        </div>`;
+    }
+  }
+
+  return `
+    <div class="tl-lanes">${top.map(([pkg, acc]) => lane(pkg, acc)).join('')}${extra}</div>
+    ${hoursRow(1)}`;
+}
+
+function drawTimeline(day) {
+  const host = $('#timelineHost');
+  $('#timelineDayLabel').textContent = fmtDay(day.date);
+  const toggle = $('#timelineToggle');
+  const hourly = day.hourly || {};
+  const hasData = Object.keys(hourly).some((h) => Object.keys(hourly[h] || {}).length > 0);
+  if (!hasData) {
+    // No per-hour data yet (older agent): fall back to the per-app totals list
+    // so the day is still informative.
+    toggle.classList.add('hidden');
+    const apps = day.apps || {};
+    host.innerHTML = Object.keys(apps).length === 0
+      ? '<div class="tl-empty muted">No usage recorded for this day.</div>'
+      : `<div class="tl-empty muted">No per-hour data for this day — showing daily totals (the agent starts collecting hourly usage with its next update).</div>`
+        + `<div class="breakdown">${appBreakdownHTML(apps, day.date)}</div>`;
+    host.querySelector('#breakdownMore')?.addEventListener('click', () => {
+      breakdownExpanded = true;
+      renderReport();
+    });
+    return;
+  }
+  toggle.classList.remove('hidden');
+  toggle.textContent = timelineMode === 'band' ? 'Per-app lanes' : 'Band view';
+  const series = makeSeries(hourly);
+  host.innerHTML = timelineMode === 'band' ? renderTimelineBand(series) : renderTimelineLanes(series, hourly);
 }
 
 // ---------------------------------------------------------------------------
@@ -773,6 +934,10 @@ $('#dayNext').onclick = () => {
 };
 $('#dayToday').onclick = () => {
   reportDayIndex = -1;
+  renderReport();
+};
+$('#timelineToggle').onclick = () => {
+  timelineMode = timelineMode === 'band' ? 'lanes' : 'band';
   renderReport();
 };
 

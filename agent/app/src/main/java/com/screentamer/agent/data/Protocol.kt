@@ -40,6 +40,7 @@ object Protocol {
         deviceId: String,
         date: String,
         apps: Map<String, Long>,
+        hourly: Map<String, Map<String, Long>>,
         totalMs: Long,
         currentApp: String?,
         locked: Boolean,
@@ -48,6 +49,9 @@ object Protocol {
         .put("deviceId", deviceId)
         .put("date", date)
         .put("apps", JSONObject(apps.mapValues { it.value.toString() }))
+        .put("hourly", JSONObject(hourly.mapValues { (_, byPkg) ->
+            JSONObject(byPkg.mapValues { it.value.toString() })
+        }))
         .put("totalMs", totalMs)
         .put("currentApp", currentApp ?: JSONObject.NULL)
         .put("locked", locked)

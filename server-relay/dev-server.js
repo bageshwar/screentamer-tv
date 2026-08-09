@@ -164,12 +164,40 @@ function dayUsage(device, daysAgo) {
   return apps;
 }
 
+/**
+ * Per-hour per-app usage for a day: { "<hour 0-23>": { "<pkg>": ms } }.
+ * Deterministic per device+date; distributes the app's daily total exactly
+ * into 1-3 blocks between 7a and 11p. On "today" hours are clamped so the
+ * future never shows usage.
+ */
+function dayHourly(device, daysAgo, apps) {
+  const local = mulberry32(device.seed * 100000 + daysAgo * 7919 + 97);
+  const r = () => local();
+  const maxHour = daysAgo === 0 ? new Date().getHours() : 23;
+  const hourly = {};
+  for (const [pkg, totalMs] of Object.entries(apps)) {
+    const blocks = 1 + Math.floor(r() * 3);
+    const hours = new Set();
+    let guard = 0;
+    while (hours.size < blocks && guard++ < 30) hours.add(7 + Math.floor(r() * 17)); // 7a..11p
+    const hs = [...hours].filter((h) => h <= maxHour);
+    if (hs.length === 0) continue;
+    let remaining = totalMs;
+    hs.forEach((h, i) => {
+      const share = i === hs.length - 1 ? remaining : Math.round(totalMs * (0.15 + r() * 0.4));
+      (hourly[h] = hourly[h] || {})[pkg] = Math.max(0, Math.min(remaining, share));
+      remaining -= hourly[h][pkg];
+    });
+  }
+  return hourly;
+}
+
 function historyFor(device, days) {
   const out = [];
   for (let i = days - 1; i >= 0; i--) {
     const date = toDateKey(Date.now() - i * DAY);
     const apps = dayUsage(device, i);
-    out.push({ date, totalMs: Object.values(apps).reduce((s, v) => s + v, 0), apps });
+    out.push({ date, totalMs: Object.values(apps).reduce((s, v) => s + v, 0), apps, hourly: dayHourly(device, i, apps) });
   }
   return out;
 }

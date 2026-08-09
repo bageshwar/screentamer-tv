@@ -15,6 +15,7 @@ class DeviceStore(private val dataDir: File) {
 
     companion object {
         private const val TAG = "ScreenTamer/DeviceStore"
+        private const val HOURLY_KEY = "_hourly"
     }
 
     private val historyDir = File(dataDir, "history")
@@ -50,17 +51,49 @@ class DeviceStore(private val dataDir: File) {
         tmp.renameTo(f)
     }
 
-    fun recordUsage(date: String, apps: Map<String, Long>): JSONObject {
+    /**
+     * Day file format: { "<pkg>": ms, ..., "_hourly": { "<hour>": { "<pkg>": ms } } }.
+     * `apps` holds cumulative totals since midnight (absolute, overwrite-safe);
+     * `hourly` merges per-hour foreground ms under `_hourly` (also absolute).
+     */
+    fun recordUsage(date: String, apps: Map<String, Long>, hourly: Map<String, Map<String, Long>>? = null): JSONObject {
         val bucket = readDay(date)
         for ((pkg, ms) in apps) {
             if (ms >= 0 && bucket.optLong(pkg) != ms) bucket.put(pkg, ms)
         }
+        if (hourly != null && hourly.isNotEmpty()) {
+            val dayHourly = bucket.optJSONObject(HOURLY_KEY) ?: JSONObject()
+            for ((hour, byPkg) in hourly) {
+                val slot = dayHourly.optJSONObject(hour) ?: JSONObject()
+                for ((pkg, ms) in byPkg) {
+                    if (ms >= 0 && slot.optLong(pkg) != ms) slot.put(pkg, ms)
+                }
+                dayHourly.put(hour, slot)
+            }
+            bucket.put(HOURLY_KEY, dayHourly)
+        }
         writeDay(date, bucket)
-        Log.d(TAG, "saved usage $date apps=${apps.size}")
+        Log.d(TAG, "saved usage $date apps=${apps.size} hours=${hourly?.size ?: 0}")
         return bucket
     }
 
-    fun usageFor(date: String): JSONObject = readDay(date)
+    /** Per-app usage for one day (hourly buckets excluded). */
+    fun usageFor(date: String): JSONObject {
+        val bucket = readDay(date)
+        bucket.remove(HOURLY_KEY)
+        return bucket
+    }
+
+    /** Per-hour per-app usage for a day: { "17": { "pkg": ms } }. */
+    fun loadHourly(date: String): Map<String, Map<String, Long>> {
+        val dayHourly = readDay(date).optJSONObject(HOURLY_KEY) ?: return emptyMap()
+        return dayHourly.keys().asSequence().associate { hour ->
+            val slot = dayHourly.optJSONObject(hour as String)
+            hour as String to (slot?.keys()?.asSequence()?.associate { pkg ->
+                pkg as String to slot.optLong(pkg)
+            } ?: emptyMap())
+        }
+    }
 
     fun historyFor(days: Int): JSONArray {
         val out = JSONArray()
@@ -68,9 +101,12 @@ class DeviceStore(private val dataDir: File) {
             val cal = Calendar.getInstance()
             cal.add(Calendar.DAY_OF_MONTH, -i)
             val key = dateKey(cal)
-            val apps = readDay(key)
+            val bucket = readDay(key)
+            val apps = JSONObject()
+            bucket.keys().forEach { k -> if (k != HOURLY_KEY) apps.put(k, bucket.get(k)) }
+            val hourly = bucket.optJSONObject(HOURLY_KEY) ?: JSONObject()
             val total = if (apps.length() == 0) 0L else apps.keys().asSequence().sumOf { apps.optLong(it as String) }
-            out.put(JSONObject().put("date", key).put("totalMs", total).put("apps", apps))
+            out.put(JSONObject().put("date", key).put("totalMs", total).put("apps", apps).put("hourly", hourly))
         }
         return out
     }

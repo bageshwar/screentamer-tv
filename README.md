@@ -39,7 +39,7 @@ Fire TV has no built-in per-app screen-time limits. This project builds a comple
 - On-demand UI: refresh button + reload after every action (no polling, no push).
 - Daily time limits, curfew windows (wraps midnight), package blacklists.
 - Instant lockdown ("Pause TV Now"), pause/play, go home, force-stop any app.
-- Per-day usage history (90-day retention), activity log, and agent **health record**.
+- Per-day usage history (90-day retention) with a **when-apps-were-used timeline** (hour-by-hour band toggleable to per-app lanes), activity log, and agent **health record**.
 - Optional **relay** (`server-relay/`) mirrors one or more TVs to a single
   computer dashboard — agents still work 100% without it.
 - Fire OS survival kit: accessibility watchdog + `START_STICKY` service.
@@ -147,7 +147,7 @@ large D-pad-first cards with strong focus rings.
 
 | Tab | Contents |
 | --- | --- |
-| Report | Device status strip (online/offline, model, last seen, now playing), day navigation (‹ prev · Today · next › or click a chart bar), today's total, yesterday / 7-day / average stats, 14-day usage chart, per-app breakdown with app icons |
+| Report | Device status strip (online/offline, model, last seen, now playing), day navigation (‹ prev · Today · next › or click a chart bar), today's total, yesterday / 7-day / average stats, 14-day usage chart, per-app breakdown with app icons, and a **when-apps-were-used timeline** — a color band of the dominant app per hour (toggle to per-app lanes), with app icons and durations; days without hourly data show the plain breakdown |
 | Activity | Per-device activity log (newest first) + agent health card (start count, last tick, tick failures, last error) |
 | Settings | Device controls (lock/unlock, pause/play, home, force-stop) + device info + policy editor (daily limit, curfew, blacklist with tap-to-add recent apps) |
 

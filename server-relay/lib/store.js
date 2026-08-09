@@ -50,9 +50,19 @@ function loadConfig() {
 
 // ---------------------------------------------------------------------------
 // Per-day usage history: data/history/<deviceId>/<yyyy-mm-dd>.json
+// Format: { "<pkg>": ms, ..., "_hourly": { "<hour 0-23>": { "<pkg>": ms } } }
 // Only the current day's file is rewritten (small, bounded writes); past days
 // are immutable and pruned by retention.
 // ---------------------------------------------------------------------------
+
+/** Namespaced key holding per-hour per-app usage inside a day bucket. */
+const HOURLY_KEY = '_hourly';
+
+function stripHourly(bucket) {
+  const out = { ...bucket };
+  delete out[HOURLY_KEY];
+  return out;
+}
 
 function dayFile(deviceId, date) {
   return path.join(HISTORY_DIR, safeSegment(deviceId), `${date}.json`);
@@ -165,13 +175,18 @@ function makeStore() {
   }
 
   /**
-   * Current-day bucket: read from the history file, apply the delta, and
-   * persist the day file (debounced). Returns the merged bucket.
+   * Current-day bucket: read from the history file, apply the absolute values,
+   * and persist the day file (debounced). Returns the merged bucket.
+   *
+   * `apps` is the cumulative per-package total since midnight (absolute, so
+   * overwriting is safe). `hourly` is per-hour per-package foreground ms:
+   *   { "<hour>": { "<pkg>": ms } }
+   * merged under the day's `_hourly` key (also absolute per hour).
    */
-  function recordUsage(deviceId, date, apps) {
+  function recordUsage(deviceId, date, apps, hourly) {
     const bucket = readDay(deviceId, date);
     let dirty = false;
-    for (const [pkg, ms] of Object.entries(apps)) {
+    for (const [pkg, ms] of Object.entries(apps || {})) {
       const prev = Number(bucket[pkg] || 0);
       const next = Number(ms);
       if (Number.isFinite(next) && next >= 0 && next !== prev) {
@@ -179,18 +194,35 @@ function makeStore() {
         dirty = true;
       }
     }
+    const hourlyIn = hourly && typeof hourly === 'object' ? hourly : {};
+    if (Object.keys(hourlyIn).length > 0) {
+      const dayHourly = (bucket[HOURLY_KEY] && typeof bucket[HOURLY_KEY] === 'object') ? bucket[HOURLY_KEY] : {};
+      for (const [hour, byPkg] of Object.entries(hourlyIn)) {
+        if (!byPkg || typeof byPkg !== 'object') continue;
+        const slot = (dayHourly[hour] && typeof dayHourly[hour] === 'object') ? dayHourly[hour] : (dayHourly[hour] = {});
+        for (const [pkg, ms] of Object.entries(byPkg)) {
+          const next = Number(ms);
+          if (Number.isFinite(next) && next >= 0 && Number(slot[pkg] || 0) !== next) {
+            slot[pkg] = next;
+            dirty = true;
+          }
+        }
+      }
+      bucket[HOURLY_KEY] = dayHourly;
+    }
     if (dirty) writeDay(deviceId, date, bucket);
     return bucket;
   }
 
-  /** Per-app usage for one device on one day (from history files). */
+  /** Per-app usage for one device on one day (from history files; no hourly). */
   function usageFor(deviceId, date) {
-    return readDay(deviceId, date);
+    return stripHourly(readDay(deviceId, date));
   }
 
   /**
    * Aggregated history for a device over the last N days (including today).
-   * Returns [{ date, totalMs, apps }] oldest first.
+   * Returns [{ date, totalMs, apps, hourly }] oldest first, where hourly is
+   * the day's per-hour map (may be {} for days before hourly tracking).
    */
   function historyFor(deviceId, days) {
     const out = [];
@@ -199,13 +231,11 @@ function makeStore() {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
       const key = toDateKey(d);
-      const apps = readDay(deviceId, key);
-      if (Object.keys(apps).length === 0) {
-        out.push({ date: key, totalMs: 0, apps: {} });
-        continue;
-      }
+      const bucket = readDay(deviceId, key);
+      const apps = stripHourly(bucket);
+      const hourly = (bucket[HOURLY_KEY] && typeof bucket[HOURLY_KEY] === 'object') ? bucket[HOURLY_KEY] : {};
       const totalMs = Object.values(apps).reduce((a, b) => a + Number(b || 0), 0);
-      out.push({ date: key, totalMs, apps });
+      out.push({ date: key, totalMs, apps, hourly });
     }
     return out;
   }

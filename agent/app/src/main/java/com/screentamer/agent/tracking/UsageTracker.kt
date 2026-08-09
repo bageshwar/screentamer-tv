@@ -21,6 +21,12 @@ class UsageTracker(private val context: Context) {
         fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     }
 
+    /**
+     * Cumulative per-package foreground ms since the previous [snapshot] call,
+     * baselined on the first call after boot (see [snapshot]).
+     */
+    private var lastTotals: Map<String, Long>? = null
+
     /** Millis since midnight that each app has been in the foreground today. */
     fun usageToday(): Map<String, Long> {
         return try {
@@ -43,6 +49,26 @@ class UsageTracker(private val context: Context) {
             Log.w(TAG, "PACKAGE_USAGE_STATS not granted — usage tracking off")
             emptyMap()
         }
+    }
+
+    /**
+     * Snapshot of today's usage plus the per-package foreground delta since
+     * the previous call. The first call after a service restart returns a null
+     * delta (baseline only) so a restart never dumps the whole day into the
+     * current hour bucket. Negative deltas (stats reset, uninstalls) are
+     * dropped.
+     */
+    fun snapshot(): Pair<Map<String, Long>, Map<String, Long>?> {
+        val totals = usageToday()
+        val last = lastTotals
+        lastTotals = totals
+        if (last == null) return totals to null
+        val delta = mutableMapOf<String, Long>()
+        for ((pkg, ms) in totals) {
+            val d = ms - (last[pkg] ?: 0L)
+            if (d > 0) delta[pkg] = d
+        }
+        return totals to delta.takeIf { it.isNotEmpty() }
     }
 
     /**

@@ -85,7 +85,7 @@ Envelope: `{"type": "<type>", …fields}`.
 | --- | --- | --- | --- |
 | Agent → relay | `hello` | `role:"agent"`, `token`, `deviceId`, `name`, `model`, `version` | Pairing; wrong token → `error` |
 | Relay → agent | `welcome` | `policy` | Current device policy |
-| Agent → relay | `usage` | `deviceId`, `date`, `apps{}`, `totalMs`, `currentApp`, `locked` | Heartbeat + telemetry (every 30s) |
+| Agent → relay | `usage` | `deviceId`, `date`, `apps{}`, `hourly{}`, `totalMs`, `currentApp`, `locked` | Heartbeat + telemetry (every 30s); `hourly` is the day's per-hour per-app map (the dashboard's timeline source) |
 | Agent → relay | `log` | `deviceId`, `msg`, `ts` | Activity log line |
 | Relay → agent | `config` | `policy` | Policy update from dashboard |
 | Relay → agent | `command` | `command`, `pkg?` | Remote action |
@@ -102,6 +102,10 @@ data/
 ├── state.json           # per-device live state + activity log
 └── history/<deviceId>/<yyyy-mm-dd>.json
 ```
+
+Day files: `{"<pkg>": ms, "_hourly": {"<hour>": {"<pkg>": ms}}}` — the `_hourly`
+key holds per-hour per-app buckets for the dashboard timeline (excluded from
+daily totals, stripped from `/api/state`).
 
 ## Console logging
 
@@ -139,8 +143,10 @@ DASH_URL=http://127.0.0.1:4000 DASH_PASSWORD=demo npm run test:headless
 ```
 
 The headless harness now covers all three clients — laptop view, phone
-viewport (touch-target checks) and `?tv=1` (D-pad focus-ring proof) — and
-writes screenshots to `test/headless/artifacts/`.
+viewport (touch-target checks) and `?tv=1` (D-pad focus-ring proof) — plus
+the report timeline (band cells, legend icons/durations, band ⇄ lanes toggle,
+phone band without data loss) and writes screenshots to
+`test/headless/artifacts/`.
 
 E2E artifacts land in `evidence/e2e-<timestamp>/` at the repo root.
 
