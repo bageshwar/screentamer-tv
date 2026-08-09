@@ -322,20 +322,19 @@ class AgentService : Service() {
 
     private suspend fun tick() {
         try {
-            val (apps, delta) = tracker.snapshot()
+            val snap = tracker.snapshot()
+            val apps = snap.totals
             val totalMs = apps.values.sum()
             currentApp = tracker.foregroundApp()
-            Log.i(TAG, "tick: totalMs=$totalMs apps=${apps.size} delta=${delta?.size ?: 0} current=${currentApp?.let { KnownApps.displayName(it) } ?: "—"} locked=$locked")
+            Log.i(TAG, "tick: totalMs=$totalMs apps=${apps.size} delta=${snap.delta?.size ?: 0} current=${currentApp?.let { KnownApps.displayName(it) } ?: "—"} locked=$locked")
 
             // 1. Enforcement
             enforce(policy, apps, totalMs)
 
             // 2. Persist on-device (hourly buckets: attribute the delta since
-            // the last tick to the current hour).
-            val todayKey = UsageTracker.todayKey()
-            val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-            val hourly = if (delta.isNullOrEmpty()) emptyMap() else mapOf(hour.toString() to delta)
-            store.recordUsage(todayKey, apps, hourly)
+            // the last tick to the hour it was snapshotted in).
+            val hourly = if (snap.delta.isNullOrEmpty()) emptyMap() else mapOf(snap.hour.toString() to snap.delta)
+            store.recordUsage(snap.date, apps, hourly)
             store.noteTick()
 
             // 3. Relay push (optional; sends the day's full hourly map so a
@@ -345,9 +344,9 @@ class AgentService : Service() {
                     Protocol.TYPE_USAGE,
                     Protocol.usage(
                         deviceId = deviceId,
-                        date = todayKey,
+                        date = snap.date,
                         apps = apps,
-                        hourly = store.loadHourly(todayKey),
+                        hourly = store.loadHourly(snap.date),
                         totalMs = totalMs,
                         currentApp = currentApp,
                         locked = locked,

@@ -19,6 +19,28 @@ class UsageTracker(private val context: Context) {
         private const val TAG = "ScreenTamer/UsageTracker"
 
         fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+        /**
+         * Pure delta computation (unit-tested): the per-package foreground ms
+         * accumulated since the previous snapshot, given the previous snapshot's
+         * date + totals. A null previous baseline (first call after restart)
+         * yields no delta. When the date changed (midnight rollover) the whole
+         * of the current day's usage counts, because the baseline belongs to
+         * yesterday. Negative deltas (stats reset, uninstalls) are dropped.
+         */
+        fun deltaSince(prevDate: String?, prevTotals: Map<String, Long>?, date: String, totals: Map<String, Long>): Map<String, Long>? {
+            if (prevDate == null || prevTotals == null) return null
+            val delta = mutableMapOf<String, Long>()
+            if (prevDate != date) {
+                for ((pkg, ms) in totals) if (ms > 0) delta[pkg] = ms
+            } else {
+                for ((pkg, ms) in totals) {
+                    val d = ms - (prevTotals[pkg] ?: 0L)
+                    if (d > 0) delta[pkg] = d
+                }
+            }
+            return delta.takeIf { it.isNotEmpty() }
+        }
     }
 
     /**
@@ -26,6 +48,9 @@ class UsageTracker(private val context: Context) {
      * baselined on the first call after boot (see [snapshot]).
      */
     private var lastTotals: Map<String, Long>? = null
+
+    /** Date ([snapshot] day) the [lastTotals] baseline belongs to. */
+    private var lastSnapshotDate: String? = null
 
     /** Millis since midnight that each app has been in the foreground today. */
     fun usageToday(): Map<String, Long> {
@@ -52,23 +77,35 @@ class UsageTracker(private val context: Context) {
     }
 
     /**
+     * One snapshot of usage: the day's per-package totals, the hour the
+     * snapshot was taken, and the per-package foreground delta since the
+     * previous call (null when there is no baseline yet, or nothing new).
+     */
+    data class Snapshot(
+        val date: String,
+        val hour: Int,
+        val totals: Map<String, Long>,
+        val delta: Map<String, Long>?
+    )
+
+    /**
      * Snapshot of today's usage plus the per-package foreground delta since
      * the previous call. The first call after a service restart returns a null
      * delta (baseline only) so a restart never dumps the whole day into the
-     * current hour bucket. Negative deltas (stats reset, uninstalls) are
-     * dropped.
+     * current hour bucket. If the date changed since the last call (midnight
+     * rollover), the whole of today's usage counts as delta — the previous
+     * baseline belonged to yesterday. Negative deltas (stats reset, uninstalls)
+     * are dropped.
      */
-    fun snapshot(): Pair<Map<String, Long>, Map<String, Long>?> {
+    fun snapshot(): Snapshot {
+        val now = Date()
+        val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
+        val hour = Calendar.getInstance().apply { time = now }.get(Calendar.HOUR_OF_DAY)
         val totals = usageToday()
-        val last = lastTotals
+        val delta = deltaSince(lastSnapshotDate, lastTotals, date, totals)
         lastTotals = totals
-        if (last == null) return totals to null
-        val delta = mutableMapOf<String, Long>()
-        for ((pkg, ms) in totals) {
-            val d = ms - (last[pkg] ?: 0L)
-            if (d > 0) delta[pkg] = d
-        }
-        return totals to delta.takeIf { it.isNotEmpty() }
+        lastSnapshotDate = date
+        return Snapshot(date, hour, totals, delta)
     }
 
     /**

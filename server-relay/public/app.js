@@ -661,9 +661,12 @@ function renderTimelineBand(series) {
   const used = [...series.byApp.entries()].sort((a, b) => b[1].totalMs - a[1].totalMs);
   const cell = (h) => {
     const c = series.byHour[h];
+    const label = c.pkg
+      ? `${fmtHour(h)}–${fmtHour((h + 1) % 24)} · ${escapeHtml(appName(c.pkg))} (${fmtDuration(c.ms)})`
+      : `${fmtHour(h)}–${fmtHour((h + 1) % 24)} · no usage`;
     return c.pkg
-      ? `<div class="tl-cell on" style="background:${barColor(c.pkg)}" title="${fmtHour(h)}–${fmtHour(h)} · ${escapeHtml(appName(c.pkg))} (${fmtDuration(c.ms)})"></div>`
-      : `<div class="tl-cell off" title="${fmtHour(h)}–${fmtHour(h)} · no usage"></div>`;
+      ? `<div class="tl-cell on" role="img" aria-label="${label}" title="${label}" style="background:${barColor(c.pkg)}"></div>`
+      : `<div class="tl-cell off" role="img" aria-label="${label}" title="${label}"></div>`;
   };
   return `
     <div class="tl-scroll">
@@ -671,7 +674,7 @@ function renderTimelineBand(series) {
       ${hoursRow(1)}
     </div>
     <div class="tl-legend">${used.map(([pkg, acc]) =>
-      `<span>${iconHTML(pkg, selectedDevice())}<b>${escapeHtml(appName(pkg))}</b><i>${fmtDuration(acc.totalMs)}</i></span>`).join('')}</div>`;
+      `<span><span class="tl-swatch" style="background:${barColor(pkg)}"></span>${iconHTML(pkg, selectedDevice())}<b>${escapeHtml(appName(pkg))}</b><i>${fmtDuration(acc.totalMs)}</i></span>`).join('')}</div>`;
 }
 
 /** Option B: one lane per app with blocks at their exact hours of the day. */
@@ -686,8 +689,10 @@ function renderTimelineLanes(series, hourly) {
   const lane = (pkg, acc) => `
     <div class="tl-lane">
       <div class="tl-lane-label">${iconHTML(pkg, selectedDevice())}<span class="tl-lane-name" title="${escapeHtml(pkg)}">${escapeHtml(appName(pkg))}</span><span class="tl-lane-ms">${fmtDuration(acc.totalMs)}</span></div>
-      <div class="tl-track">${(series.blocks.get(pkg) || []).map((r) =>
-        `<div class="tl-block" style="left:${(r.start / 24) * 100}%;width:${((r.end - r.start) / 24) * 100}%;background:${barColor(pkg)}" title="${fmtHour(r.start)}–${fmtHour(r.end - 1)} · ${fmtDuration(r.ms)}"></div>`).join('')}</div>
+      <div class="tl-track">${(series.blocks.get(pkg) || []).map((r) => {
+        const label = `${fmtHour(r.start)}–${fmtHour(r.end % 24)} · ${fmtDuration(r.ms)}`;
+        return `<div class="tl-block" role="img" aria-label="${label}" title="${label}" style="left:${(r.start / 24) * 100}%;width:${((r.end - r.start) / 24) * 100}%;background:${barColor(pkg)}"></div>`;
+      }).join('')}</div>
     </div>`;
 
   let extra = '';
@@ -707,8 +712,10 @@ function renderTimelineLanes(series, hourly) {
       extra = `
         <div class="tl-lane">
           <div class="tl-lane-label"><span class="app-icon other">…</span><span class="tl-lane-name">${rest.length} more apps</span><span class="tl-lane-ms">${fmtDuration(restMs)}</span></div>
-          <div class="tl-track">${otherRuns.map((r) =>
-            `<div class="tl-block" style="left:${(r.start / 24) * 100}%;width:${((r.end - r.start) / 24) * 100}%;background:var(--muted)" title="${fmtHour(r.start)}–${fmtHour(r.end - 1)} · ${fmtDuration(r.ms)}"></div>`).join('')}</div>
+          <div class="tl-track">${otherRuns.map((r) => {
+            const label = `${fmtHour(r.start)}–${fmtHour(r.end % 24)} · ${fmtDuration(r.ms)}`;
+            return `<div class="tl-block" role="img" aria-label="${label}" title="${label}" style="left:${(r.start / 24) * 100}%;width:${((r.end - r.start) / 24) * 100}%;background:var(--muted)"></div>`;
+          }).join('')}</div>
         </div>`;
     }
   }

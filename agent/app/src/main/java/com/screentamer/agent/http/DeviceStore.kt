@@ -54,7 +54,8 @@ class DeviceStore(private val dataDir: File) {
     /**
      * Day file format: { "<pkg>": ms, ..., "_hourly": { "<hour>": { "<pkg>": ms } } }.
      * `apps` holds cumulative totals since midnight (absolute, overwrite-safe);
-     * `hourly` merges per-hour foreground ms under `_hourly` (also absolute).
+     * `hourly` adds per-hour foreground deltas into `_hourly` (each tick
+     * accumulates into its hour slot, never replaces).
      */
     fun recordUsage(date: String, apps: Map<String, Long>, hourly: Map<String, Map<String, Long>>? = null): JSONObject {
         val bucket = readDay(date)
@@ -66,7 +67,7 @@ class DeviceStore(private val dataDir: File) {
             for ((hour, byPkg) in hourly) {
                 val slot = dayHourly.optJSONObject(hour) ?: JSONObject()
                 for ((pkg, ms) in byPkg) {
-                    if (ms >= 0 && slot.optLong(pkg) != ms) slot.put(pkg, ms)
+                    if (ms > 0) slot.put(pkg, slot.optLong(pkg) + ms)
                 }
                 dayHourly.put(hour, slot)
             }
