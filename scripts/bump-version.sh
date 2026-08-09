@@ -3,46 +3,38 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# Guard against the re-trigger loop: the commit pushed by this script
-# re-triggers the workflow; the bot-authored commit must not bump again.
-LAST_AUTHOR=$(git log -1 --format='%an')
-if [[ "$LAST_AUTHOR" == "github-actions[bot]" ]]; then
-  echo "skipped=true"
-  exit 0
-fi
-
 PROPS="agent/gradle.properties"
 
-VERSION_NAME=$(grep -E '^VERSION_NAME=' "$PROPS" | cut -d= -f2)
-VERSION_CODE=$(grep -E '^VERSION_CODE=' "$PROPS" | cut -d= -f2)
-
-# Most recently created tag (commit-date order, since version sort is unreliable
-# with mixed "vX.Y.Z" and "X.Y.Z" tags)
+# Most recently created release tag (commit-date order — version sort is
+# unreliable with mixed "vX.Y.Z" and "X.Y.Z" tags)
 LAST_TAG=$(git tag --sort=-creatordate | head -1 || true)
 LAST_TAG_CLEAN="${LAST_TAG#v}"
 
-# versionCode must always increase (Play/app stores require monotonic codes)
-NEW_VERSION_CODE=$((VERSION_CODE + 1))
+CURRENT_VERSION_NAME=$(grep -E '^VERSION_NAME=' "$PROPS" | cut -d= -f2)
+CURRENT_VERSION_CODE=$(grep -E '^VERSION_CODE=' "$PROPS" | cut -d= -f2)
 
-# versionName: auto patch bump if it matches the last release; otherwise a
-# manual minor/major bump was made in the merge commit — keep it.
-NEW_VERSION_NAME="$VERSION_NAME"
-if [[ -z "$LAST_TAG_CLEAN" || "$LAST_TAG_CLEAN" == "$VERSION_NAME" ]]; then
-  IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NAME"
+# Version as of the last release tag's commit (fall back to the working tree
+# if that tag predates version properties in gradle.properties)
+PREV_VERSION_NAME=$(git show "$LAST_TAG:$PROPS" 2>/dev/null | grep -E '^VERSION_NAME=' | cut -d= -f2 || true)
+PREV_VERSION_CODE=$(git show "$LAST_TAG:$PROPS" 2>/dev/null | grep -E '^VERSION_CODE=' | cut -d= -f2 || true)
+PREV_VERSION_NAME="${PREV_VERSION_NAME:-$CURRENT_VERSION_NAME}"
+PREV_VERSION_CODE="${PREV_VERSION_CODE:-$CURRENT_VERSION_CODE}"
+
+# versionCode must always increase
+NEW_VERSION_CODE=$((PREV_VERSION_CODE + 1))
+
+# versionName: if the merged PR manually bumped it (minor/major), keep it;
+# otherwise auto patch-bump the last release
+if [[ "$CURRENT_VERSION_NAME" == "$PREV_VERSION_NAME" ]]; then
+  BASE_NAME="${LAST_TAG_CLEAN:-$CURRENT_VERSION_NAME}"
+  IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_NAME"
   NEW_VERSION_NAME="${MAJOR}.${MINOR}.$((PATCH + 1))"
+else
+  NEW_VERSION_NAME="$CURRENT_VERSION_NAME"
 fi
 
-sed -i.bak -E \
-  -e "s/^(VERSION_NAME=).*/\1$NEW_VERSION_NAME/" \
-  -e "s/^(VERSION_CODE=).*/\1$NEW_VERSION_CODE/" \
-  "$PROPS"
-rm -f "$PROPS.bak"
-
-git config user.name "github-actions[bot]"
-git config user.email "github-actions[bot]@users.noreply.github.com"
-git add "$PROPS"
-git commit -m "Bump version to $NEW_VERSION_NAME (version code $NEW_VERSION_CODE)"
 git tag "v$NEW_VERSION_NAME"
 
 echo "version=$NEW_VERSION_NAME"
 echo "version_code=$NEW_VERSION_CODE"
+echo "tag=v$NEW_VERSION_NAME"
