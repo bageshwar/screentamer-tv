@@ -281,10 +281,10 @@ wss.on('connection', (ws) => {
         device.locked = !!msg.locked;
         device.totalMs = Number(msg.totalMs) || 0;
         if (msg.date) {
-          recordUsage(msg.deviceId, msg.date, msg.apps || {});
+          recordUsage(msg.deviceId, msg.date, msg.apps || {}, msg.hourly || {});
         }
         addLog(device, 'usage reported');
-        console.log('[ws] usage: %s %s totalMs=%d locked=%s apps=%d', msg.deviceId, msg.date || '?', device.totalMs, device.locked, Object.keys(msg.apps || {}).length);
+        console.log('[ws] usage: %s %s totalMs=%d locked=%s apps=%d hours=%d', msg.deviceId, msg.date || '?', device.totalMs, device.locked, Object.keys(msg.apps || {}).length, Object.keys(msg.hourly || {}).length);
         persist();
         broadcastState();
         break;

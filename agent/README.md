@@ -67,12 +67,12 @@ Stored in `shared_prefs/screentamer_prefs.xml` (app-private).
 ```
 AgentService (foreground, notification required)
  ├─ loop: every 30s ── tick()
- │    ├─ UsageTracker.usageToday()       → per-app ms today
- │    ├─ UsageTracker.foregroundApp()    → current package
- │    ├─ PolicyManager.shouldLock(...)   → enforcement decision
- │    ├─ LockOverlay.show/hide + home key
- │    ├─ DeviceStore.recordUsage/noteTick
- │    └─ AgentSocket.send(usage)         → relay (if connected)
+  │    ├─ UsageTracker.snapshot()      → per-app ms today + delta since last tick
+  │    ├─ UsageTracker.foregroundApp() → current package
+  │    ├─ PolicyManager.shouldLock(...)   → enforcement decision
+  │    ├─ LockOverlay.show/hide + home key
+  │    ├─ DeviceStore.recordUsage(today, apps, hourly)  → tick delta → current hour bucket
+  │    └─ AgentSocket.send(usage)      → relay (if connected; sends day's full hourly map)
  ├─ EmbeddedServer (thread-per-request)
  │    └─ Handler → PolicyManager / AdbClient / DeviceStore
  └─ AgentSocket → relay messages: welcome/config/command
@@ -86,7 +86,9 @@ AgentService (foreground, notification required)
   `password` in query/body. Assets are served from `assets/www/` (a mirror of
   `server-relay/public/`).
 - **DeviceStore** (`http/DeviceStore.kt`): `files/data/history/<yyyy-mm-dd>.json`
-  (atomic writes), `files/data/log.json` (cap 200 entries), `files/data/health.json`:
+  (atomic writes; per-app totals plus a `_hourly` key — `{"<hour>": {"<pkg>": ms}}`
+  per-hour buckets that power the dashboard timeline), `files/data/log.json`
+  (cap 200 entries), `files/data/health.json`:
 
   ```json
   {

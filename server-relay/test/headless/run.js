@@ -111,8 +111,8 @@ async function main() {
       statToday: document.querySelector('#statToday')?.textContent,
       statWeek: document.querySelector('#statWeek')?.textContent,
       statAvg: document.querySelector('#statAvg')?.textContent,
-      appRows: document.querySelectorAll('#appBreakdown .app-row').length,
-      appIcons: document.querySelectorAll('#appBreakdown .app-row .app-icon').length,
+      legendItems: document.querySelectorAll('#timelineHost .tl-legend span').length,
+      legendIcons: document.querySelectorAll('#timelineHost .tl-legend img.app-icon, #timelineHost .tl-legend .app-icon').length,
       chartPainted: painted,
       badges: document.querySelector('#statusBadges')?.textContent,
     };
@@ -132,9 +132,42 @@ async function main() {
   check('7-day stat populated', !!report.statWeek && report.statWeek !== '—');
   check('daily avg populated', !!report.statAvg && report.statAvg !== '—');
   check('daily chart painted', report.chartPainted > 1000);
-  check('per-app rows render', report.appRows > 0);
-  check('app icons rendered (img or avatar)', report.appIcons > 0);
+  check('timeline legend lists apps with icons', report.legendItems > 0 && report.legendIcons > 0);
   check('device badges shown', report.badges.length > 0);
+
+  // Timeline ("when apps were used"): band by default, toggle to per-app lanes.
+  const tl = await page.evaluate(() => {
+    const cells = document.querySelectorAll('#timelineHost .tl-cell').length;
+    return {
+      card: !!document.querySelector('#timelineHost'),
+      cells,
+      empty: !!document.querySelector('#timelineHost .tl-empty'),
+      toggleHidden: document.querySelector('#timelineToggle')?.classList.contains('hidden'),
+      legend: document.querySelectorAll('#timelineHost .tl-legend span').length,
+    };
+  });
+  check('timeline card rendered', tl.card === true);
+  if (tl.cells > 0) {
+    check('timeline band shows one cell per hour', tl.cells === 24);
+    await page.click('#timelineToggle');
+    await page.waitForTimeout(150);
+    const lanes = await page.evaluate(() => ({
+      lanes: document.querySelectorAll('#timelineHost .tl-lane').length,
+      blocks: document.querySelectorAll('#timelineHost .tl-block').length,
+      names: document.querySelectorAll('#timelineHost .tl-lane-name').length,
+      durations: document.querySelectorAll('#timelineHost .tl-lane-ms').length,
+      toggle: document.querySelector('#timelineToggle')?.textContent,
+    }));
+    check('toggle switches to per-app lanes', lanes.lanes > 0 && lanes.blocks > 0);
+    check('lanes show app names + totals', lanes.names > 0 && lanes.durations > 0);
+    check('toggle label flipped', lanes.toggle === 'Band view');
+    await page.click('#timelineToggle');
+    await page.waitForTimeout(150);
+    check('toggle returns to band', await page.evaluate(() => document.querySelectorAll('#timelineHost .tl-cell').length) === 24);
+  } else {
+    check('timeline shows empty state without hourly data', tl.empty === true || tl.toggleHidden === true);
+  }
+  await page.screenshot({ path: path.join(ARTIFACTS, '02b-report-timeline.png') });
 
   // Day navigation: stepping back changes the report to that day.
   const titleBefore = report.dayTitle;
@@ -144,8 +177,8 @@ async function main() {
   const afterNav = await page.evaluate(() => ({
     title: document.querySelector('#reportDayTitle')?.textContent,
     sub: document.querySelector('#reportDaySub')?.textContent,
-    label: document.querySelector('#appDayLabel')?.textContent,
-    rows: document.querySelectorAll('#appBreakdown .app-row').length,
+    label: document.querySelector('#timelineDayLabel')?.textContent,
+    rows: document.querySelectorAll('#timelineHost .app-row').length,
   }));
   check('day nav switches the report day', afterNav.sub !== subBefore);
   check('day nav updates the day title', afterNav.title !== titleBefore || afterNav.label.includes('(yesterday)'));
@@ -235,17 +268,23 @@ async function main() {
   const touch = await phone.evaluate(() => {
     const dayBtn = getComputedStyle(document.querySelector('.day-nav .btn'));
     const tab = getComputedStyle(document.querySelector('.tab'));
+    const toggle = getComputedStyle(document.querySelector('#timelineToggle'));
     return {
       dayMinHeight: parseFloat(dayBtn.minHeight),
       tabFullWidth: tab.flexGrow === '1',
       statsCols: getComputedStyle(document.querySelector('.stats-row')).gridTemplateColumns.split(' ').length,
       reportVisible: !document.querySelector('#view-report')?.classList.contains('hidden'),
+      toggleMinHeight: parseFloat(toggle.minHeight),
+      phoneBandCells: document.querySelectorAll('#timelineHost .tl-cell').length,
+      phoneBandFallback: document.querySelector('#timelineHost .tl-empty') !== null,
     };
   });
   check('phone: day-nav touch targets >= 44px', touch.dayMinHeight >= 44);
   check('phone: tabs stretch full width', touch.tabFullWidth === true);
   check('phone: stats grid is 2 columns', touch.statsCols <= 2);
   check('phone: report renders', touch.reportVisible === true);
+  check('phone: timeline toggle is a touch target', touch.toggleMinHeight >= 44);
+  check('phone: band keeps one cell per hour', touch.phoneBandCells === 24 || touch.phoneBandFallback === true);
   await phone.screenshot({ path: path.join(ARTIFACTS, '06-phone-report.png'), fullPage: true });
   await phone.click('.tab[data-view="activity"]');
   await phone.waitForTimeout(300);

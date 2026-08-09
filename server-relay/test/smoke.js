@@ -51,7 +51,7 @@ async function main() {
   check('parent receives state with agent device', firstState && firstState.state.devices['ST-TEST-1']?.online === true);
 
   // 5. Agent reports usage; parent gets pushed update
-  agent.send(JSON.stringify({ type: 'usage', deviceId: 'ST-TEST-1', date: TODAY, apps: { 'com.netflix.ninja': 1800000, 'com.google.android.youtube.tv': 900000 }, totalMs: 2700000, currentApp: 'com.netflix.ninja', locked: false }));
+  agent.send(JSON.stringify({ type: 'usage', deviceId: 'ST-TEST-1', date: TODAY, apps: { 'com.netflix.ninja': 1800000, 'com.google.android.youtube.tv': 900000 }, hourly: { '17': { 'com.netflix.ninja': 1200000 }, '18': { 'com.google.android.youtube.tv': 900000 } }, totalMs: 2700000, currentApp: 'com.netflix.ninja', locked: false }));
   await new Promise((r) => setTimeout(r, 300));
   // Match on the usage entry itself (not totalMs: a stale value from a previous
   // run may persist in state.json and make an earlier push match).
@@ -91,6 +91,9 @@ async function main() {
   const totalToday = hist.history[hist.history.length - 1].totalMs;
   check('history returns 14 days oldest-first', res.status === 200 && hist.history.length === 14 && hist.history[0].date < hist.history[13].date && hist.today === hist.history[13].date);
   check('history includes usage reported above', totalToday >= 2700000 && hist.history[13].apps['com.netflix.ninja'] === 1800000);
+  const hToday = hist.history[13].hourly || {};
+  check('history carries hourly timeline data', hToday['17']?.['com.netflix.ninja'] === 1200000 && hToday['18']?.['com.google.android.youtube.tv'] === 900000);
+  check('hourly data excluded from daily totals', Object.keys(hist.history[13].apps).includes('_hourly') === false);
   res = await fetch(`${BASE}/api/history?deviceId=ST-TEST-1&days=999`);
   check('history days clamped to 365', res.status === 200 && (await res.json()).history.length === 365);
   res = await fetch(`${BASE}/api/history?deviceId=ST-TEST-1&days=abc`);
@@ -104,6 +107,7 @@ async function main() {
   res = await fetch(`${BASE}/api/state`);
   const st = await res.json();
   check('state usage reads today from history', st.usage['ST-TEST-1']?.['com.netflix.ninja'] === 1800000);
+  check('state usage excludes hourly buckets', '_hourly' in (st.usage['ST-TEST-1'] || {}) === false);
 
   agent.close();
   parent.close();
