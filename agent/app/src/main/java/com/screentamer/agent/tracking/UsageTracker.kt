@@ -53,17 +53,17 @@ class UsageTracker(private val context: Context) {
     private var lastSnapshotDate: String? = null
 
     /** Millis since midnight that each app has been in the foreground today. */
-    fun usageToday(): Map<String, Long> {
+    fun usageToday(now: Date = Date()): Map<String, Long> {
         return try {
             val usm = context.getSystemService(UsageStatsManager::class.java)
-            val cal = Calendar.getInstance()
+            val cal = Calendar.getInstance().apply { time = now }
             cal.set(Calendar.HOUR_OF_DAY, 0)
             cal.set(Calendar.MINUTE, 0)
             cal.set(Calendar.SECOND, 0)
             cal.set(Calendar.MILLISECOND, 0)
             val dayStart = cal.timeInMillis
 
-            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, dayStart, System.currentTimeMillis())
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, dayStart, now.time)
             val tracked = stats
                 .filter { it.totalTimeInForeground > 0 && !KnownApps.isSystemish(it.packageName) }
                 .associate { it.packageName to it.totalTimeInForeground }
@@ -101,7 +101,7 @@ class UsageTracker(private val context: Context) {
         val now = Date()
         val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
         val hour = Calendar.getInstance().apply { time = now }.get(Calendar.HOUR_OF_DAY)
-        val totals = usageToday()
+        val totals = usageToday(now)
         val delta = deltaSince(lastSnapshotDate, lastTotals, date, totals)
         lastTotals = totals
         lastSnapshotDate = date
