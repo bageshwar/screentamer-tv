@@ -34,8 +34,10 @@ Fire TV has no built-in per-app screen-time limits. This project builds a comple
 
 ## Features
 
-- Embedded **parent dashboard** served by the agent on `http://<device-hostname>.local:8080/` (or by IP `http://<tv-ip>:8080/`)
-  — no server process to host.
+- Embedded **parent dashboard** served by the agent on `http://<device-name>.local:8080/` (or by IP `http://<tv-ip>:8080/`)
+  — no server process to host. The agent broadcasts its own mDNS/DNS-SD record
+  (`<device-name>._http._tcp.local.` → `<hostname>.local:<port>` + A record), so
+  no IP hunting and no `NsdManager` quirks.
 - On-demand UI: refresh button + reload after every action (no polling, no push).
 - Daily time limits, curfew windows (wraps midnight), package blacklists.
 - Instant lockdown ("Pause TV Now"), pause/play, go home, force-stop any app.
@@ -137,8 +139,12 @@ channel. The agent is live when the status shows the `.local` URL (e.g. `Dashboa
 
 ## Using the dashboard
 
-Open `http://<device-hostname>.local:8080/` or `http://<fire-tv-ip>:8080/` from any browser on your LAN (or from a
-computer via `adb forward tcp:8080 tcp:8080` → `http://127.0.0.1:8080/`).
+Open `http://<device-name>.local:8080/` or `http://<fire-tv-ip>:8080/` from any browser on your LAN (or from a
+computer via `adb forward tcp:8080 tcp:8080` → `http://127.0.0.1:8080/`). The
+agent broadcasts a DNS-SD service named `<device-name>` (`_http._tcp`) whose
+SRV record targets `<device-name>.local:<port>` and whose A record carries the
+TV's LAN IP — `dns-sd -B _http._tcp` (macOS) or `avahi-browse -r _http._tcp`
+(Linux) list every ScreenTamer on the network.
 
 The dashboard is one responsive UI with three tabs, styled per client: the
 **Report** tab is the default; the phone layout (`max-width: 700px`) is

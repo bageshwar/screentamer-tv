@@ -13,6 +13,10 @@ building, installing, configuration and internals.
   30-second loop.
 - **Serve** — an embedded zero-dependency HTTP/1.1 server (`:8080` by default)
   hosting the dashboard (`/`) and REST API (`/api/*`).
+- **Broadcast DNS** — a self-contained mDNS/DNS-SD responder (`MdnsAdvertiser`)
+  publishes the dashboard as `<device-name>._http._tcp.local.` pointing at
+  `<hostname>.local:<port>` with its LAN IP in the A record, so a parent can
+  open `http://<hostname>.local:<port>/` without hunting for the TV's IP.
 - **Persist** — per-day usage history, an activity log and a health record in
   the app's private storage (`DeviceStore`).
 - **Enforce** — daily limits, curfews, blacklists, instant lockdown; full-screen
@@ -85,6 +89,14 @@ AgentService (foreground, notification required)
   `POST /api/config`, `POST /api/command`. Auth: `x-parent-password` header or
   `password` in query/body. Assets are served from `assets/www/` (a mirror of
   `server-relay/public/`).
+- **Local DNS broadcast** (`http/MdnsAdvertiser.kt`): speaks mDNS directly on
+  the `224.0.0.251:5353` multicast group. It publishes the PTR (`_http._tcp`)
+  record for browsing, the SRV record (`<hostname>.local:<port>`), the A record
+  (the device's LAN IPv4), and a `path=/` TXT. The hostname is the configured
+  device name made DNS-safe (`screentamer` → `screentamer.local`); with no
+  device name it falls back to `screentamer`. Re-announces every 30s (TTL 120s).
+  Unlike `NsdManager`, the app owns its records — the `.local` name resolves
+  from any mDNS-capable device on the LAN.
 - **DeviceStore** (`http/DeviceStore.kt`): `files/data/history/<yyyy-mm-dd>.json`
   (atomic writes; per-app totals plus a `_hourly` key — `{"<hour>": {"<pkg>": ms}}`
   per-hour buckets that power the dashboard timeline), `files/data/log.json`
