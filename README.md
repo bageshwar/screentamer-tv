@@ -36,8 +36,9 @@ Fire TV has no built-in per-app screen-time limits. This project builds a comple
 
 - Embedded **parent dashboard** served by the agent on `http://<device-name>.local:8080/` (or by IP `http://<tv-ip>:8080/`)
   — no server process to host. The agent broadcasts its own mDNS/DNS-SD record
-  (`<device-name>._http._tcp.local.` → `<hostname>.local:<port>` + A record), so
-  no IP hunting and no `NsdManager` quirks.
+  (`ScreenTamer <device-name>._http._tcp.local.` → `<hostname>.local:<port>` + A
+  record, where `<hostname>` is the lowercased, hyphenated device name), so no IP
+  hunting and no `NsdManager` quirks.
 - On-demand UI: refresh button + reload after every action (no polling, no push).
 - Daily time limits, curfew windows (wraps midnight), package blacklists.
 - Instant lockdown ("Pause TV Now"), pause/play, go home, force-stop any app.

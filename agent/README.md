@@ -14,9 +14,10 @@ building, installing, configuration and internals.
 - **Serve** — an embedded zero-dependency HTTP/1.1 server (`:8080` by default)
   hosting the dashboard (`/`) and REST API (`/api/*`).
 - **Broadcast DNS** — a self-contained mDNS/DNS-SD responder (`MdnsAdvertiser`)
-  publishes the dashboard as `<device-name>._http._tcp.local.` pointing at
-  `<hostname>.local:<port>` with its LAN IP in the A record, so a parent can
-  open `http://<hostname>.local:<port>/` without hunting for the TV's IP.
+  publishes the dashboard as `ScreenTamer <device-name>._http._tcp.local.`
+  pointing at `<hostname>.local:<port>` with its LAN IP in the A record, so a
+  parent can open `http://<hostname>.local:<port>/` without hunting for the TV's
+  IP.
 - **Persist** — per-day usage history, an activity log and a health record in
   the app's private storage (`DeviceStore`).
 - **Enforce** — daily limits, curfews, blacklists, instant lockdown; full-screen

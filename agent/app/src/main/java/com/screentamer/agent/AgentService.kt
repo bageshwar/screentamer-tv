@@ -195,10 +195,10 @@ class AgentService : Service() {
                 }
             }
         })
-        server.start()
-        Log.i(TAG, "embedded server on :${Prefs.serverPort(this)}")
         mdns = MdnsAdvertiser(this)
         mdns.start(Prefs.serverPort(this), "ScreenTamer ${Prefs.deviceName(this)}")
+        server.start()
+        Log.i(TAG, "embedded server on :${Prefs.serverPort(this)}")
 
         socket = AgentSocket(this, object : AgentSocket.Listener {
             override fun onConnected() {

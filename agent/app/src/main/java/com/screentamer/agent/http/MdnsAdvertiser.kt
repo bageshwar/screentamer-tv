@@ -55,7 +55,12 @@ class MdnsAdvertiser(context: Context) {
     private var port = 0
     private var instanceName = "screentamer"
 
-    private val ipAddress: String? by lazy { findIpv4() }
+    /** The LAN IPv4 currently advertised in the A record; refreshed on each announce. */
+    @Volatile
+    private var ipAddress: String? = null
+
+    /** The multicast interface the socket is bound to (null when none available). */
+    private var selectedIface: NetworkInterface? = null
 
     companion object {
         private const val MDNS_GROUP = "224.0.0.251"
@@ -176,27 +181,25 @@ class MdnsAdvertiser(context: Context) {
         if (running) return
         this.port = port
         this.instanceName = serviceName
-        val ip = ipAddress
+        val resolved = resolveIfaceAndIp()
+        val ip = resolved?.second
         Log.i(logTag, "start: hostname=${hostname()}.local ip=$ip port=$port instance=$instanceName")
         if (ip == null) {
             Log.w(logTag, "no IPv4 address found — mDNS unavailable (dashboard still reachable by IP)")
             return
         }
+        ipAddress = ip
+        selectedIface = resolved?.first
 
         val sock = MulticastSocket(null)
         try {
             sock.reuseAddress = true
             sock.bind(java.net.InetSocketAddress(MDNS_PORT))
             val group = InetAddress.getByName(MDNS_GROUP)
-            val iface = java.util.Collections.list(NetworkInterface.getNetworkInterfaces())
-                .firstOrNull { ni ->
-                    ni.isUp && !ni.isLoopback &&
-                        java.util.Collections.list(ni.inetAddresses).any { it is Inet4Address && !it.isLoopbackAddress }
-                }
-            if (iface != null) {
-                sock.setNetworkInterface(iface)
-                sock.joinGroup(java.net.InetSocketAddress(InetAddress.getByName(MDNS_GROUP), 0), iface)
-                Log.i(logTag, "joined $MDNS_GROUP on ${iface.name} (${iface.displayName})")
+            if (selectedIface != null) {
+                sock.setNetworkInterface(selectedIface)
+                sock.joinGroup(java.net.InetSocketAddress(InetAddress.getByName(MDNS_GROUP), 0), selectedIface)
+                Log.i(logTag, "joined $MDNS_GROUP on ${selectedIface?.name} (${selectedIface?.displayName})")
             } else {
                 sock.joinGroup(group)
             }
@@ -304,7 +307,13 @@ class MdnsAdvertiser(context: Context) {
     private fun announceLoop(sock: MulticastSocket) {
         while (running) {
             Thread.sleep(ANNOUNCE_INTERVAL_MS)
-            if (running) announce(sock)
+            if (running) {
+                // Wi-Fi reconnects / DHCP lease changes can move the device's
+                // address; refresh it so the A record stays correct without a
+                // service restart.
+                resolveIfaceAndIp()?.second?.let { ipAddress = it }
+                announce(sock)
+            }
         }
     }
 
@@ -353,16 +362,15 @@ class MdnsAdvertiser(context: Context) {
         }
 
         val answerNames = mutableSetOf<String>()
+        val host = hostname().lowercase() + ".local."
         questions.forEach { (qname, qtype) ->
-            val matched = qtype == TYPE_ANY ||
-                (qname == "_http._tcp.local." && qtype == TYPE_PTR) ||
-                (qname == serviceInstance() && (qtype == TYPE_SRV || qtype == TYPE_TXT)) ||
-                (qname == hostname().lowercase() + ".local." && qtype == TYPE_A)
-            if (matched) {
-                if (qname == "_http._tcp.local.") answerNames.add("ptr")
-                if (qname == serviceInstance()) answerNames.add("instance")
-                if (qname == hostname().lowercase() + ".local.") answerNames.add("host")
-                if (qtype == TYPE_ANY) { answerNames.add("ptr"); answerNames.add("instance"); answerNames.add("host") }
+            when (qname) {
+                "_http._tcp.local." ->
+                    if (qtype == TYPE_PTR || qtype == TYPE_ANY) answerNames.add("ptr")
+                serviceInstance() ->
+                    if (qtype == TYPE_SRV || qtype == TYPE_TXT || qtype == TYPE_ANY) answerNames.add("instance")
+                host ->
+                    if (qtype == TYPE_A || qtype == TYPE_ANY) answerNames.add("host")
             }
         }
         if (answerNames.isEmpty()) return null
@@ -482,15 +490,20 @@ class MdnsAdvertiser(context: Context) {
     // Network
     // ------------------------------------------------------------------
 
-    /** The device's LAN IPv4 (first non-loopback, non-link-local address). */
-    private fun findIpv4(): String? {
+    /**
+     * Resolves the multicast interface together with its usable LAN IPv4 so the
+     * interface the socket joins is the same one whose address is published in
+     * the A record. Returns the interface (or null to fall back to the default)
+     * and its non-loopback, non-link-local IPv4 (or null when none exists).
+     */
+    private fun resolveIfaceAndIp(): Pair<NetworkInterface, String>? {
         return try {
             val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
             for (ni in java.util.Collections.list(interfaces)) {
                 if (!ni.isUp || ni.isLoopback) continue
                 for (addr in java.util.Collections.list(ni.inetAddresses)) {
                     if (addr is Inet4Address && !addr.isLoopbackAddress && !addr.isLinkLocalAddress) {
-                        return addr.hostAddress
+                        return ni to addr.hostAddress
                     }
                 }
             }
