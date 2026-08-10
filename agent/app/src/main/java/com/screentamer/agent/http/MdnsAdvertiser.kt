@@ -32,6 +32,13 @@ import kotlin.concurrent.thread
  *
  * The responder answers queries on demand and re-announces every 30s so the
  * records stay cached (mDNS TTL is 120s).
+ *
+ * Collision detection: because the socket is joined to the mDNS multicast
+ * group, it also receives *other* devices' announcements and answers. If any
+ * of them (from a different source IP) carries our hostname or service
+ * instance, the app flags a name collision ([collision]) so the UI can warn
+ * the parent to pick a unique device name. The flag self-clears ~90s after the
+ * conflicting advertiser goes silent.
  */
 class MdnsAdvertiser(context: Context) {
 
@@ -62,6 +69,89 @@ class MdnsAdvertiser(context: Context) {
         private const val TTL = 120L
         private const val ANNOUNCE_INTERVAL_MS = 30_000L
         private const val MAX_LABEL = 63
+        private const val COLLISION_VISIBLE_MS = 90_000L
+
+        // Shared across instances so a fresh `MdnsAdvertiser` created to read
+        // hostname() (e.g. in MainActivity) also sees the live collision state.
+        @Volatile
+        private var lastCollisionAt = 0L
+        @Volatile
+        private var collisionHost: String? = null
+        @Volatile
+        private var collisionPeer: String? = null
+        @Volatile
+        private var collisionWarnedHost: String? = null
+
+        /**
+         * Scans a received mDNS response/announcement (QR=1) for an answer or
+         * additional record that matches our own name. Returns the matching name
+         * (`host.local.` or the full instance name) when another advertiser is
+         * broadcasting it, otherwise null. Pure: no Context, no network.
+         */
+        fun matchCollisionRecord(data: ByteArray, length: Int, myHost: String, myInstance: String): String? {
+            if (length < 12) return null
+            val isResponse = (data[2].toInt() and 0x80) != 0
+            if (!isResponse) return null // only responses/announcements carry records
+
+            var pos = 12
+            val qd = ((data[4].toInt() and 0xFF) shl 8) or (data[5].toInt() and 0xFF)
+            val an = ((data[6].toInt() and 0xFF) shl 8) or (data[7].toInt() and 0xFF)
+            val ns = ((data[8].toInt() and 0xFF) shl 8) or (data[9].toInt() and 0xFF)
+            val ar = ((data[10].toInt() and 0xFF) shl 8) or (data[11].toInt() and 0xFF)
+
+            // Skip questions.
+            repeat(qd) {
+                val (_, next) = readName(data, pos) ?: return null
+                pos = next + 4
+            }
+
+            // Inspect answers + authority + additional records.
+            repeat(an + ns + ar) {
+                val (name, next) = readName(data, pos) ?: return null
+                pos = next
+                if (pos + 10 > length) return null
+                val type = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
+                val rdlen = ((data[pos + 8].toInt() and 0xFF) shl 8) or (data[pos + 9].toInt() and 0xFF)
+                pos += 10
+                val isOurs = name == myHost && type == TYPE_A ||
+                    name == myInstance && (type == TYPE_PTR || type == TYPE_SRV || type == TYPE_TXT)
+                if (isOurs) return name
+                pos += rdlen
+            }
+            return null
+        }
+
+        /** Reads a (possibly compressed) name; returns the name and next offset. */
+        fun readName(data: ByteArray, start: Int): Pair<String, Int>? {
+            var pos = start
+            val labels = mutableListOf<String>()
+            var endPos = -1
+            var guard = 0
+            while (pos < data.size && guard++ < 128) {
+                val len = data[pos].toInt() and 0xFF
+                when {
+                    len == 0 -> {
+                        if (endPos < 0) endPos = pos + 1
+                        val name = if (labels.isEmpty()) "." else labels.joinToString(".") + "."
+                        return name to endPos
+                    }
+                    (len and 0xC0) == 0xC0 -> {
+                        if (pos + 1 >= data.size) return null
+                        val ptr = ((len and 0x3F) shl 8) or (data[pos + 1].toInt() and 0xFF)
+                        if (endPos < 0) endPos = pos + 2
+                        if (ptr >= data.size) return null
+                        pos = ptr
+                    }
+                    (len and 0xC0) != 0 -> return null
+                    else -> {
+                        if (pos + 1 + len > data.size) return null
+                        labels += String(data, pos + 1, len, Charsets.UTF_8)
+                        pos += 1 + len
+                    }
+                }
+            }
+            return null
+        }
     }
 
     /**
@@ -70,6 +160,16 @@ class MdnsAdvertiser(context: Context) {
      * before/after [start].
      */
     fun hostname(): String = sanitizeHost(Prefs.deviceName(appContext))
+
+    /** True while another device on the LAN broadcasts our hostname/instance. */
+    fun collision(): Boolean =
+        lastCollisionAt > 0 && System.currentTimeMillis() - lastCollisionAt < COLLISION_VISIBLE_MS
+
+    /** The conflicting name, e.g. `screentamer.local.` (null when no collision). */
+    fun collisionHost(): String? = if (collision()) collisionHost else null
+
+    /** The source IP of the conflicting advertiser (null when no collision). */
+    fun collisionPeer(): String? = if (collision()) collisionPeer else null
 
     /** Registers the dashboard service on [port] and starts answering mDNS. */
     fun start(port: Int, serviceName: String) {
@@ -163,6 +263,7 @@ class MdnsAdvertiser(context: Context) {
             try {
                 val pkt = DatagramPacket(buf, buf.size)
                 sock.receive(pkt)
+                checkCollision(buf, pkt.length, pkt.address?.hostAddress)
                 val response = buildResponse(buf, pkt.length) ?: continue
                 val target = if (pkt.port == MDNS_PORT) {
                     InetAddress.getByName(MDNS_GROUP)
@@ -174,6 +275,29 @@ class MdnsAdvertiser(context: Context) {
             } catch (e: Exception) {
                 if (running) Log.w(logTag, "respond loop: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Passive mDNS collision detection: every advertiser on the LAN sends its
+     * records to the multicast group, so we receive other devices' responses
+     * and announcements too. If a packet from a *different* source IP carries
+     * our hostname (A) or service instance (PTR/SRV/TXT), another TV is using
+     * the same name — flag it so the UI can warn the parent to rename.
+     */
+    private fun checkCollision(data: ByteArray, length: Int, srcIp: String?) {
+        if (length < 12 || srcIp == null || srcIp == ipAddress) return
+        val name = matchCollisionRecord(data, length, hostname().lowercase() + ".local.", serviceInstance()) ?: return
+        recordCollision(name, srcIp)
+    }
+
+    private fun recordCollision(name: String, srcIp: String) {
+        collisionHost = name
+        collisionPeer = srcIp
+        lastCollisionAt = System.currentTimeMillis()
+        if (collisionWarnedHost != name) {
+            collisionWarnedHost = name
+            Log.w(logTag, "mDNS name collision: '$name' is also broadcast by $srcIp — rename this TV for a unique .local URL")
         }
     }
 
@@ -352,37 +476,6 @@ class MdnsAdvertiser(context: Context) {
         }
         out.write(0)
         return out.toByteArray()
-    }
-
-    /** Reads a (possibly compressed) name; returns the name and next offset. */
-    private fun readName(data: ByteArray, start: Int): Pair<String, Int>? {
-        var pos = start
-        val labels = mutableListOf<String>()
-        var endPos = -1
-        var guard = 0
-        while (pos < data.size && guard++ < 128) {
-            val len = data[pos].toInt() and 0xFF
-            when {
-                len == 0 -> {
-                    if (endPos < 0) endPos = pos + 1
-                    return labels.joinToString(".") to endPos
-                }
-                (len and 0xC0) == 0xC0 -> {
-                    if (pos + 1 >= data.size) return null
-                    val ptr = ((len and 0x3F) shl 8) or (data[pos + 1].toInt() and 0xFF)
-                    if (endPos < 0) endPos = pos + 2
-                    if (ptr >= data.size) return null
-                    pos = ptr
-                }
-                (len and 0xC0) != 0 -> return null
-                else -> {
-                    if (pos + 1 + len > data.size) return null
-                    labels += String(data, pos + 1, len, Charsets.UTF_8)
-                    pos += 1 + len
-                }
-            }
-        }
-        return null
     }
 
     // ------------------------------------------------------------------
