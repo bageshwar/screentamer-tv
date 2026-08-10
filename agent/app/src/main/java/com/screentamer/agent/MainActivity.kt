@@ -265,6 +265,12 @@ class MainActivity : AppCompatActivity() {
         line("Server: ${Prefs.serverUrl(this).ifBlank { "<not set>" }}")
         line("Dashboard: $dashboardUrl")
         line("Device ID: ${Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"}")
+        val mdns = MdnsAdvertiser(this)
+        if (mdns.collision()) {
+            line("")
+            line("⚠ Another device is broadcasting \"${mdns.collisionHost()?.removeSuffix(".local.")}\"", bad)
+            line("Open Device settings and set a unique Device Name", bad)
+        }
         if (com.screentamer.agent.core.UpdateManager.hasUpdate) {
             line("")
             line("★ UPDATE AVAILABLE: ${com.screentamer.agent.core.UpdateManager.latestVersionName}", bad)
