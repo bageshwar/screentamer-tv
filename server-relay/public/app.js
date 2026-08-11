@@ -779,7 +779,7 @@ function renderActivity() {
       }
     }
     list.innerHTML = rows
-      .map((l) => `<div><time title="${fmtDateTime(l.ts)}">${fmtTime(l.ts)}</time><span class="log-msg">${escapeHtml(l.msg)}</span></div>`)
+      .map((l) => `<div><time title="${fmtDateTime(l.ts)}">${fmtDateTime(l.ts)}</time><span class="log-msg">${escapeHtml(l.msg)}</span></div>`)
       .join('');
   }
 
