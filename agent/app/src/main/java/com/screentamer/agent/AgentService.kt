@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import com.screentamer.agent.core.AdbClient
@@ -128,10 +129,9 @@ class AgentService : Service() {
         // day can balloon past 96h). Drop those from persisted history now, then
         // keep pruning every PRUNE_INTERVAL_MS in the tick loop so packages
         // uninstalled mid-day don't linger in history until the next restart.
-        scope.launch {
-            lastPruneTime = System.currentTimeMillis()
-            store.pruneUninstalled(tracker.installedPackages())
-        }
+        // Runs inside startLoop's coroutine before the first tick so cleanup
+        // never races the initial recordUsage write.
+        lastPruneTime = SystemClock.elapsedRealtime()
 
         server = EmbeddedServer(Prefs.serverPort(this), object : EmbeddedServer.Handler {
             override fun login(password: String): Boolean {
@@ -323,6 +323,9 @@ class AgentService : Service() {
             Log.e(TAG, "loop crashed", e)
             store.noteTickFailure(e)
         }) {
+            // Serialize with tick writes: prune before the first recordUsage so
+            // the startup cleanup can never overwrite a fresher usage write.
+            store.pruneUninstalled(tracker.installedPackages())
             while (isActive) {
                 tick()
                 delay(TRACK_INTERVAL_MS)
@@ -336,21 +339,23 @@ class AgentService : Service() {
             val apps = snap.totals
             val totalMs = apps.values.sum()
             currentApp = tracker.foregroundApp()
-            Log.i(TAG, "tick: totalMs=$totalMs apps=${apps.size} delta=${snap.delta?.size ?: 0} current=${currentApp?.let { KnownApps.displayName(it) } ?: "—"} locked=$locked")
+            Log.i(TAG, "tick: totalMs=$totalMs apps=${apps.size} delta=${snap.delta?.size ?: 0} authoritative=${snap.authoritative} current=${currentApp?.let { KnownApps.displayName(it) } ?: "—"} locked=$locked")
 
-            // 1. Enforcement
-            enforce(policy, apps, totalMs)
+            // 1. Enforcement (only on an authoritative observation; a failed
+            //    query must not count toward a limit or trigger a lock).
+            if (snap.authoritative) enforce(policy, apps, totalMs)
 
             // 2. Persist on-device (hourly buckets: attribute the delta since
-            // the last tick to the hour it was snapshotted in).
-            val hourly = if (snap.delta.isNullOrEmpty()) emptyMap() else mapOf(snap.hour.toString() to snap.delta)
-            store.recordUsage(snap.date, apps, hourly)
+            //    the last tick to the hour it was snapshotted in). Non-
+            //    authoritative snapshots keep existing totals (no false wipe).
+            val hourly = if (snap.delta.isNullOrEmpty() || !snap.authoritative) emptyMap() else mapOf(snap.hour.toString() to snap.delta)
+            store.recordUsage(snap.date, apps, hourly, snap.authoritative)
             store.noteTick()
 
             // Periodically drop history for packages uninstalled since the last
             // prune (Fire OS keeps reporting phantom usage for them).
-            if (System.currentTimeMillis() - lastPruneTime >= PRUNE_INTERVAL_MS) {
-                lastPruneTime = System.currentTimeMillis()
+            if (SystemClock.elapsedRealtime() - lastPruneTime >= PRUNE_INTERVAL_MS) {
+                lastPruneTime = SystemClock.elapsedRealtime()
                 store.pruneUninstalled(tracker.installedPackages())
             }
 

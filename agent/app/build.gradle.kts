@@ -69,6 +69,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 kotlin {
@@ -81,4 +85,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     testImplementation("junit:junit:4.13.2")
+    // Provide a real org.json on the test classpath so the android.jar stub
+    // (returns default nulls) doesn't break JSON assertions in DeviceStore tests.
+    testImplementation("org.json:json:20240303")
 }

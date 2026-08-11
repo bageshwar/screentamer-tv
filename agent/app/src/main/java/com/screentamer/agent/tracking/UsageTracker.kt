@@ -2,6 +2,7 @@ package com.screentamer.agent.tracking
 
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.screentamer.agent.data.KnownApps
 import java.text.SimpleDateFormat
@@ -57,6 +58,9 @@ class UsageTracker(private val context: Context) {
     private var installedCache: Set<String>? = null
     private var installedCacheAt = 0L
 
+    /** True once an enumeration of installed packages has actually succeeded. */
+    private var installedKnown = false
+
     /**
      * Packages actually installed on the device, cached for 5 minutes.
      *
@@ -67,25 +71,29 @@ class UsageTracker(private val context: Context) {
      * for a single calendar day). Only packages that still exist may count.
      */
     fun installedPackages(): Set<String> {
-        val now = System.currentTimeMillis()
+        val now = SystemClock.elapsedRealtime()
         installedCache?.let {
             if (now - installedCacheAt < INSTALLED_CACHE_MS) return it
         }
-        val set = try {
-            context.packageManager.getInstalledPackages(0)
+        return try {
+            val set = context.packageManager.getInstalledPackages(0)
                 .map { it.packageName }
                 .toSet()
+            installedCache = set
+            installedCacheAt = now
+            installedKnown = true
+            set
         } catch (e: Exception) {
             Log.w(TAG, "could not enumerate installed packages: ${e.message}")
             installedCache ?: emptySet()
         }
-        installedCache = set
-        installedCacheAt = now
-        return set
     }
 
+    /** Result of a usage query: per-package totals plus whether the query is authoritative. */
+    data class UsageResult(val totals: Map<String, Long>, val authoritative: Boolean)
+
     /** Millis since midnight that each app has been in the foreground today. */
-    fun usageToday(now: Date = Date()): Map<String, Long> {
+    fun usageToday(now: Date = Date()): UsageResult {
         return try {
             val usm = context.getSystemService(UsageStatsManager::class.java)
             val cal = Calendar.getInstance().apply { time = now }
@@ -105,11 +113,14 @@ class UsageTracker(private val context: Context) {
                 }
                 .associate { it.packageName to it.totalTimeInForeground }
             Log.d(TAG, "usage today: ${tracked.size} apps, ${tracked.values.sum()}ms (of ${stats.size} stats entries)")
-            tracked
+            // Only authoritative if the query returned stats AND the installed
+            // package list is known; otherwise we cannot tell real absence from
+            // an unavailable observation, so callers must not prune on it.
+            UsageResult(tracked, authoritative = installedKnown)
         } catch (e: SecurityException) {
             // PACKAGE_USAGE_STATS not granted via adb yet.
             Log.w(TAG, "PACKAGE_USAGE_STATS not granted — usage tracking off")
-            emptyMap()
+            UsageResult(emptyMap(), authoritative = false)
         }
     }
 
@@ -117,12 +128,17 @@ class UsageTracker(private val context: Context) {
      * One snapshot of usage: the day's per-package totals, the hour the
      * snapshot was taken, and the per-package foreground delta since the
      * previous call (null when there is no baseline yet, or nothing new).
+     * ```
+     * authoritative is false when the underlying usage query was unavailable
+     * (e.g. PACKAGE_USAGE_STATS not granted), so callers know the totals are
+     * empty rather than genuinely zero and must not treat that as a wipe.
      */
     data class Snapshot(
         val date: String,
         val hour: Int,
         val totals: Map<String, Long>,
-        val delta: Map<String, Long>?
+        val delta: Map<String, Long>?,
+        val authoritative: Boolean
     )
 
     /**
@@ -132,17 +148,22 @@ class UsageTracker(private val context: Context) {
      * current hour bucket. If the date changed since the last call (midnight
      * rollover), the whole of today's usage counts as delta — the previous
      * baseline belonged to yesterday. Negative deltas (stats reset, uninstalls)
-     * are dropped.
+     * are dropped. A non-authoritative observation (usage query unavailable)
+     * returns empty totals so callers neither replace the baseline with a bogus
+     * map nor write stale data into the day file.
      */
     fun snapshot(): Snapshot {
         val now = Date()
         val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
         val hour = Calendar.getInstance().apply { time = now }.get(Calendar.HOUR_OF_DAY)
-        val totals = usageToday(now)
-        val delta = deltaSince(lastSnapshotDate, lastTotals, date, totals)
-        lastTotals = totals
+        val result = usageToday(now)
+        if (!result.authoritative) {
+            return Snapshot(date, hour, emptyMap(), null, authoritative = false)
+        }
+        val delta = deltaSince(lastSnapshotDate, lastTotals, date, result.totals)
+        lastTotals = result.totals
         lastSnapshotDate = date
-        return Snapshot(date, hour, totals, delta)
+        return Snapshot(date, hour, result.totals, delta, authoritative = true)
     }
 
     /**

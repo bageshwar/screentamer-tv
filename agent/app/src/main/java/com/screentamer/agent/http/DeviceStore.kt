@@ -22,6 +22,10 @@ class DeviceStore(private val dataDir: File) {
     private val healthFile = File(dataDir, "health.json")
     private val logFile = File(dataDir, "log.json")
 
+    /** Guards read-modify-write ops so the startup and periodic prunes cannot
+     *  interleave with a tick's recordUsage on the same day file. */
+    private val lock = Any()
+
     init {
         historyDir.mkdirs()
         dataDir.mkdirs()
@@ -56,31 +60,40 @@ class DeviceStore(private val dataDir: File) {
      * `apps` holds cumulative totals since midnight (absolute, overwrite-safe);
      * `hourly` adds per-hour foreground deltas into `_hourly` (each tick
      * accumulates into its hour slot, never replaces).
+     *
+     * [authoritative] is true only when the caller's totals came from a
+     * successful usage query. When false (usage stats unavailable), leftover
+     * top-level entries are kept: an empty observation must not be mistaken
+     * for real zero usage and wipe the day's history.
      */
-    fun recordUsage(date: String, apps: Map<String, Long>, hourly: Map<String, Map<String, Long>>? = null): JSONObject {
-        val bucket = readDay(date)
-        // apps holds the cumulative per-package totals since midnight, so it is
-        // authoritative: drop any leftover top-level entries for packages the
-        // tracker no longer reports (e.g. phantom usage for uninstalled apps).
-        val stale = bucket.keys().asSequence().toList().filter { it != HOURLY_KEY && it !in apps }
-        for (k in stale) bucket.remove(k)
-        for ((pkg, ms) in apps) {
-            if (ms >= 0 && bucket.optLong(pkg) != ms) bucket.put(pkg, ms)
-        }
-        if (hourly != null && hourly.isNotEmpty()) {
-            val dayHourly = bucket.optJSONObject(HOURLY_KEY) ?: JSONObject()
-            for ((hour, byPkg) in hourly) {
-                val slot = dayHourly.optJSONObject(hour) ?: JSONObject()
-                for ((pkg, ms) in byPkg) {
-                    if (ms > 0) slot.put(pkg, slot.optLong(pkg) + ms)
-                }
-                dayHourly.put(hour, slot)
+    fun recordUsage(date: String, apps: Map<String, Long>, hourly: Map<String, Map<String, Long>>? = null, authoritative: Boolean = true): JSONObject {
+        synchronized(lock) {
+            val bucket = readDay(date)
+            // apps holds the cumulative per-package totals since midnight, so it is
+            // authoritative: drop any leftover top-level entries for packages the
+            // tracker no longer reports (e.g. phantom usage for uninstalled apps).
+            val stale = if (authoritative) {
+                bucket.keys().asSequence().toList().filter { it != HOURLY_KEY && it !in apps }
+            } else emptyList()
+            for (k in stale) bucket.remove(k)
+            for ((pkg, ms) in apps) {
+                if (ms >= 0 && bucket.optLong(pkg) != ms) bucket.put(pkg, ms)
             }
-            bucket.put(HOURLY_KEY, dayHourly)
+            if (hourly != null && hourly.isNotEmpty()) {
+                val dayHourly = bucket.optJSONObject(HOURLY_KEY) ?: JSONObject()
+                for ((hour, byPkg) in hourly) {
+                    val slot = dayHourly.optJSONObject(hour) ?: JSONObject()
+                    for ((pkg, ms) in byPkg) {
+                        if (ms > 0) slot.put(pkg, slot.optLong(pkg) + ms)
+                    }
+                    dayHourly.put(hour, slot)
+                }
+                bucket.put(HOURLY_KEY, dayHourly)
+            }
+            writeDay(date, bucket)
+            Log.d(TAG, "saved usage $date apps=${apps.size} hours=${hourly?.size ?: 0} authoritative=$authoritative")
+            return bucket
         }
-        writeDay(date, bucket)
-        Log.d(TAG, "saved usage $date apps=${apps.size} hours=${hourly?.size ?: 0}")
-        return bucket
     }
 
     /** Per-app usage for one day (hourly buckets excluded). */
@@ -138,18 +151,20 @@ class DeviceStore(private val dataDir: File) {
     fun pruneUninstalled(installed: Set<String>): Int {
         if (installed.isEmpty()) return 0
         var touched = 0
-        historyDir.listFiles()?.forEach { f ->
-            if (!f.isFile) return@forEach
-            try {
-                val bucket = JSONObject(f.readText())
-                if (pruneBucket(bucket, installed)) {
-                    val tmp = File(f.parentFile, f.name + ".tmp")
-                    tmp.writeText(bucket.toString())
-                    tmp.renameTo(f)
-                    touched++
+        synchronized(lock) {
+            historyDir.listFiles()?.forEach { f ->
+                if (!f.isFile) return@forEach
+                try {
+                    val bucket = JSONObject(f.readText())
+                    if (pruneBucket(bucket, installed)) {
+                        val tmp = File(f.parentFile, f.name + ".tmp")
+                        tmp.writeText(bucket.toString())
+                        tmp.renameTo(f)
+                        touched++
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "could not prune ${f.name}: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "could not prune ${f.name}: ${e.message}")
             }
         }
         if (touched > 0) Log.i(TAG, "pruned uninstalled packages from $touched history file(s)")
