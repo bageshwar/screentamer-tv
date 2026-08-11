@@ -145,6 +145,7 @@ class EmbeddedServer(
 
         // Browsers ask for /favicon.ico by default; point them at the SVG like the relay does
         else if (method == "GET" && path == "/favicon.ico") {
+            status = 302
             out.write("HTTP/1.1 302 Found\r\nLocation: /static/favicon.svg\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
         }
 
