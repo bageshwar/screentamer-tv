@@ -1,76 +1,541 @@
 package com.screentamer.agent.http
 
 import android.content.Context
-import android.net.nsd.NsdManager
-import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.util.Log
+import com.screentamer.agent.Prefs
+import java.io.ByteArrayOutputStream
+import java.net.DatagramPacket
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.MulticastSocket
+import java.net.NetworkInterface
+import kotlin.concurrent.thread
 
 /**
- * Advertises the embedded dashboard server over mDNS/Bonjour so parents can
- * open it at http://<device-hostname>.local:<port>/ instead of remembering an
- * IP address. Uses Android's built-in NsdManager (no dependencies).
+ * Local DNS broadcaster (mDNS/DNS-SD) for the embedded dashboard server.
  *
- * Note: Android's NsdManager advertises the *service* (screentamer._http._tcp)
- * and the device's own hostname in the SRV record — the hostname can't be
- * chosen by an app. The advertised hostname is surfaced via [hostname] so the
- * UI can print the exact `.local` URL to open.
+ * Unlike Android's NsdManager — which advertises the *system's* hostname and
+ * cannot publish a friendly, app-chosen `.local` name — this responder speaks
+ * the mDNS wire protocol directly on the multicast group `224.0.0.251:5353` and
+ * owns its records:
+ *
+ *  - `PTR  <hostname>._http._tcp.local.`  (service discovery / browsing)
+ *  - `SRV  <instance>._http._tcp.local.`  -> <hostname>.local:<port>
+ *  - `A    <hostname>.local.`             -> the device's LAN IPv4 address
+ *  - `TXT  <instance>._http._tcp.local.`  -> path=/
+ *
+ * The `<hostname>` is derived from the configured device name, so a parent can
+ * open `http://<hostname>.local:<port>/` from any mDNS-capable device on the
+ * LAN without knowing (or hunting for) the TV's IP address. This is what the
+ * issue calls "broadcast a DNS".
+ *
+ * The responder answers queries on demand and re-announces every 30s so the
+ * records stay cached (mDNS TTL is 120s).
+ *
+ * Collision detection: because the socket is joined to the mDNS multicast
+ * group, it also receives *other* devices' announcements and answers. If any
+ * of them (from a different source IP) carries our hostname or service
+ * instance, the app flags a name collision ([collision]) so the UI can warn
+ * the parent to pick a unique device name. The flag self-clears ~90s after the
+ * conflicting advertiser goes silent.
  */
 class MdnsAdvertiser(context: Context) {
 
     private val logTag = "ScreenTamer/MdnsAdvertiser"
-    private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
-    private var registered = false
-    private val listener = object : NsdManager.RegistrationListener {
-        override fun onServiceRegistered(info: NsdServiceInfo) {
-            registered = true
-            val host = info.host?.hostName
-            Log.i(logTag, "mDNS registered: ${info.serviceName}.${info.serviceType} port=${info.port} host=$host")
+    private val appContext = context.applicationContext
+
+    private var socket: MulticastSocket? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private var respondThread: Thread? = null
+    private var announceThread: Thread? = null
+
+    @Volatile
+    private var running = false
+    private var port = 0
+    private var instanceName = "screentamer"
+
+    /** The LAN IPv4 currently advertised in the A record; refreshed on each announce. */
+    @Volatile
+    private var ipAddress: String? = null
+
+    /** The multicast interface the socket is bound to (null when none available). */
+    private var selectedIface: NetworkInterface? = null
+
+    companion object {
+        private const val MDNS_GROUP = "224.0.0.251"
+        private const val MDNS_PORT = 5353
+        private const val TYPE_PTR = 12
+        private const val TYPE_TXT = 16
+        private const val TYPE_SRV = 33
+        private const val TYPE_A = 1
+        private const val TYPE_ANY = 255
+        private const val CLASS_IN = 1
+        private const val TTL = 120L
+        private const val ANNOUNCE_INTERVAL_MS = 30_000L
+        private const val MAX_LABEL = 63
+        private const val COLLISION_VISIBLE_MS = 90_000L
+
+        // Shared across instances so a fresh `MdnsAdvertiser` created to read
+        // hostname() (e.g. in MainActivity) also sees the live collision state.
+        @Volatile
+        private var lastCollisionAt = 0L
+        @Volatile
+        private var collisionHost: String? = null
+        @Volatile
+        private var collisionPeer: String? = null
+        @Volatile
+        private var collisionWarnedHost: String? = null
+
+        /**
+         * Scans a received mDNS response/announcement (QR=1) for an answer or
+         * additional record that matches our own name. Returns the matching name
+         * (`host.local.` or the full instance name) when another advertiser is
+         * broadcasting it, otherwise null. Pure: no Context, no network.
+         */
+        fun matchCollisionRecord(data: ByteArray, length: Int, myHost: String, myInstance: String): String? {
+            if (length < 12) return null
+            val isResponse = (data[2].toInt() and 0x80) != 0
+            if (!isResponse) return null // only responses/announcements carry records
+
+            var pos = 12
+            val qd = ((data[4].toInt() and 0xFF) shl 8) or (data[5].toInt() and 0xFF)
+            val an = ((data[6].toInt() and 0xFF) shl 8) or (data[7].toInt() and 0xFF)
+            val ns = ((data[8].toInt() and 0xFF) shl 8) or (data[9].toInt() and 0xFF)
+            val ar = ((data[10].toInt() and 0xFF) shl 8) or (data[11].toInt() and 0xFF)
+
+            // Skip questions.
+            repeat(qd) {
+                val (_, next) = readName(data, pos) ?: return null
+                pos = next + 4
+            }
+
+            // Inspect answers + authority + additional records.
+            repeat(an + ns + ar) {
+                val (name, next) = readName(data, pos) ?: return null
+                pos = next
+                if (pos + 10 > length) return null
+                val type = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
+                val rdlen = ((data[pos + 8].toInt() and 0xFF) shl 8) or (data[pos + 9].toInt() and 0xFF)
+                pos += 10
+                val isOurs = name == myHost && type == TYPE_A ||
+                    name == myInstance && (type == TYPE_PTR || type == TYPE_SRV || type == TYPE_TXT)
+                if (isOurs) return name
+                pos += rdlen
+            }
+            return null
         }
 
-        override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
-            Log.w(logTag, "mDNS registration failed: $errorCode")
-        }
-
-        override fun onServiceUnregistered(info: NsdServiceInfo) {
-            registered = false
-        }
-
-        override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {
-            Log.w(logTag, "mDNS unregistration failed: $errorCode")
+        /** Reads a (possibly compressed) name; returns the name and next offset. */
+        fun readName(data: ByteArray, start: Int): Pair<String, Int>? {
+            var pos = start
+            val labels = mutableListOf<String>()
+            var endPos = -1
+            var guard = 0
+            while (pos < data.size && guard++ < 128) {
+                val len = data[pos].toInt() and 0xFF
+                when {
+                    len == 0 -> {
+                        if (endPos < 0) endPos = pos + 1
+                        val name = if (labels.isEmpty()) "." else labels.joinToString(".") + "."
+                        return name to endPos
+                    }
+                    (len and 0xC0) == 0xC0 -> {
+                        if (pos + 1 >= data.size) return null
+                        val ptr = ((len and 0x3F) shl 8) or (data[pos + 1].toInt() and 0xFF)
+                        if (endPos < 0) endPos = pos + 2
+                        if (ptr >= data.size) return null
+                        pos = ptr
+                    }
+                    (len and 0xC0) != 0 -> return null
+                    else -> {
+                        if (pos + 1 + len > data.size) return null
+                        labels += String(data, pos + 1, len, Charsets.UTF_8)
+                        pos += 1 + len
+                    }
+                }
+            }
+            return null
         }
     }
 
-    /** Registers `<serviceName>._http._tcp` on [port]. Safe to call repeatedly. */
+    /**
+     * The `.local` hostname this device broadcasts (e.g. `screentamer`),
+     * derived from the configured device name and DNS-safe. Safe to call
+     * before/after [start].
+     */
+    fun hostname(): String = sanitizeHost(Prefs.deviceName(appContext))
+
+    /** True while another device on the LAN broadcasts our hostname/instance. */
+    fun collision(): Boolean =
+        lastCollisionAt > 0 && System.currentTimeMillis() - lastCollisionAt < COLLISION_VISIBLE_MS
+
+    /** The conflicting name, e.g. `screentamer.local.` (null when no collision). */
+    fun collisionHost(): String? = if (collision()) collisionHost else null
+
+    /** The source IP of the conflicting advertiser (null when no collision). */
+    fun collisionPeer(): String? = if (collision()) collisionPeer else null
+
+    /** Registers the dashboard service on [port] and starts answering mDNS. */
     fun start(port: Int, serviceName: String) {
-        if (registered) return
-        val info = NsdServiceInfo().apply {
-            serviceType = "_http._tcp."
-            setServiceName(serviceName)
-            this.port = port
+        if (running) return
+        this.port = port
+        this.instanceName = serviceName
+        val resolved = resolveIfaceAndIp()
+        val ip = resolved?.second
+        Log.i(logTag, "start: hostname=${hostname()}.local ip=$ip port=$port instance=$instanceName")
+        if (ip == null) {
+            Log.w(logTag, "no IPv4 address found — mDNS unavailable (dashboard still reachable by IP)")
+            return
         }
+        ipAddress = ip
+        selectedIface = resolved?.first
+
+        val sock = MulticastSocket(null)
         try {
-            nsdManager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
+            sock.reuseAddress = true
+            sock.bind(java.net.InetSocketAddress(MDNS_PORT))
+            val group = InetAddress.getByName(MDNS_GROUP)
+            if (selectedIface != null) {
+                sock.setNetworkInterface(selectedIface)
+                sock.joinGroup(java.net.InetSocketAddress(InetAddress.getByName(MDNS_GROUP), 0), selectedIface)
+                Log.i(logTag, "joined $MDNS_GROUP on ${selectedIface?.name} (${selectedIface?.displayName})")
+            } else {
+                sock.joinGroup(group)
+            }
+            sock.timeToLive = 255
         } catch (e: Exception) {
-            Log.w(logTag, "mDNS unavailable: ${e.message}")
+            Log.w(logTag, "mDNS bind/join failed: ${e.message}", e)
+            return
         }
+        socket = sock
+
+        val wifi = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        multicastLock = wifi?.createMulticastLock("screentamer-mdns")?.apply {
+            setReferenceCounted(false)
+            try {
+                acquire()
+            } catch (e: Exception) {
+                Log.w(logTag, "multicast lock acquire failed: ${e.message}")
+            }
+        }
+
+        running = true
+        respondThread = thread(name = "mdns-respond", isDaemon = true) { respondLoop(sock) }
+        announceThread = thread(name = "mdns-announce", isDaemon = true) { announceLoop(sock) }
+        thread(name = "mdns-initial-announce", isDaemon = true) { announce(sock) }
+        Log.i(logTag, "mDNS broadcasting http://${hostname()}.local:$port")
     }
 
     fun stop() {
-        if (!registered) return
+        if (!running) return
+        running = false
         try {
-            nsdManager.unregisterService(listener)
+            socket?.leaveGroup(InetAddress.getByName(MDNS_GROUP))
         } catch (e: Exception) {
-            Log.w(logTag, "mDNS unregister failed: ${e.message}")
+            Log.w(logTag, "leaveGroup: ${e.message}")
         }
-        registered = false
+        try {
+            socket?.close()
+        } catch (e: Exception) {
+            Log.w(logTag, "close: ${e.message}")
+        }
+        socket = null
+        multicastLock?.let {
+            try {
+                it.release()
+            } catch (e: Exception) {
+                Log.w(logTag, "multicast lock release failed: ${e.message}")
+            }
+        }
+        multicastLock = null
+        respondThread?.join(500)
+        announceThread?.join(500)
+        respondThread = null
+        announceThread = null
+        Log.i(logTag, "mDNS stopped")
     }
 
-    /** The mDNS hostname of this device (`...` for `http://<name>.local:<port>/`),
-     *  or null when it can't be resolved (some devices report "localhost"). */
-    fun hostname(): String? = try {
-        java.net.InetAddress.getLocalHost().hostName
-            ?.takeUnless { it.isBlank() || it.equals("localhost", ignoreCase = true) }
-    } catch (e: Exception) {
-        null
+    // ------------------------------------------------------------------
+    // Responder
+    // ------------------------------------------------------------------
+
+    private fun respondLoop(sock: MulticastSocket) {
+        val buf = ByteArray(2048)
+        while (running) {
+            try {
+                val pkt = DatagramPacket(buf, buf.size)
+                sock.receive(pkt)
+                checkCollision(buf, pkt.length, pkt.address?.hostAddress)
+                val response = buildResponse(buf, pkt.length) ?: continue
+                val target = if (pkt.port == MDNS_PORT) {
+                    InetAddress.getByName(MDNS_GROUP)
+                } else {
+                    pkt.address
+                }
+                sock.send(DatagramPacket(response, response.size, target, MDNS_PORT))
+                Log.d(logTag, "answered ${pkt.length}B query with ${response.size}B (${buildResponseSummary(buf, pkt.length)})")
+            } catch (e: Exception) {
+                if (running) Log.w(logTag, "respond loop: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Passive mDNS collision detection: every advertiser on the LAN sends its
+     * records to the multicast group, so we receive other devices' responses
+     * and announcements too. If a packet from a *different* source IP carries
+     * our hostname (A) or service instance (PTR/SRV/TXT), another TV is using
+     * the same name — flag it so the UI can warn the parent to rename.
+     */
+    private fun checkCollision(data: ByteArray, length: Int, srcIp: String?) {
+        if (length < 12 || srcIp == null || srcIp == ipAddress) return
+        val name = matchCollisionRecord(data, length, hostname().lowercase() + ".local.", serviceInstance()) ?: return
+        recordCollision(name, srcIp)
+    }
+
+    private fun recordCollision(name: String, srcIp: String) {
+        collisionHost = name
+        collisionPeer = srcIp
+        lastCollisionAt = System.currentTimeMillis()
+        if (collisionWarnedHost != name) {
+            collisionWarnedHost = name
+            Log.w(logTag, "mDNS name collision: '$name' is also broadcast by $srcIp — rename this TV for a unique .local URL")
+        }
+    }
+
+    private fun announceLoop(sock: MulticastSocket) {
+        while (running) {
+            Thread.sleep(ANNOUNCE_INTERVAL_MS)
+            if (running) {
+                // Wi-Fi reconnects / DHCP lease changes can move the device's
+                // address; refresh it so the A record stays correct without a
+                // service restart.
+                resolveIfaceAndIp()?.second?.let { ipAddress = it }
+                announce(sock)
+            }
+        }
+    }
+
+    /** Sends an unsolicited announcement (PTR + SRV + A + TXT) to the group. */
+    private fun announce(sock: MulticastSocket) {
+        val records = mutableListOf<ByteArray>()
+        ptrRecord()?.let(records::add)
+        srvRecord()?.let(records::add)
+        aRecord()?.let(records::add)
+        txtRecord()?.let(records::add)
+        if (records.isEmpty()) return
+        val body = ByteArrayOutputStream()
+        records.forEach(body::write)
+        val out = ByteArrayOutputStream()
+        writeHeader(out, answers = records.size)
+        out.write(body.toByteArray())
+        try {
+            val group = InetAddress.getByName(MDNS_GROUP)
+            sock.send(DatagramPacket(out.toByteArray(), out.size(), group, MDNS_PORT))
+        } catch (e: Exception) {
+            if (running) Log.w(logTag, "announce failed: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Parses an mDNS query and returns a response packet, or null when nothing
+     * in the query matches this advertiser.
+     */
+    private fun buildResponse(data: ByteArray, length: Int): ByteArray? {
+        if (length < 12) return null
+        val qd = ((data[4].toInt() and 0xFF) shl 8) or (data[5].toInt() and 0xFF)
+        if (qd == 0) return null // announcement, not a query
+        val isResponse = (data[2].toInt() and 0x80) != 0
+        if (isResponse) return null
+
+        var pos = 12
+        val questions = mutableListOf<Pair<String, Int>>()
+        repeat(qd) {
+            val (name, next) = readName(data, pos) ?: return null
+            pos = next
+            if (pos + 4 > length) return null
+            val type = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
+            val cls = ((data[pos + 2].toInt() and 0xFF) shl 8) or (data[pos + 3].toInt() and 0xFF)
+            questions.add(name to type)
+            pos += 4
+        }
+
+        val answerNames = mutableSetOf<String>()
+        val host = hostname().lowercase() + ".local."
+        questions.forEach { (qname, qtype) ->
+            when (qname) {
+                "_http._tcp.local." ->
+                    if (qtype == TYPE_PTR || qtype == TYPE_ANY) answerNames.add("ptr")
+                serviceInstance() ->
+                    if (qtype == TYPE_SRV || qtype == TYPE_TXT || qtype == TYPE_ANY) answerNames.add("instance")
+                host ->
+                    if (qtype == TYPE_A || qtype == TYPE_ANY) answerNames.add("host")
+            }
+        }
+        if (answerNames.isEmpty()) return null
+
+        val records = mutableListOf<ByteArray>()
+        if ("ptr" in answerNames) ptrRecord()?.let(records::add)
+        if ("instance" in answerNames) {
+            srvRecord()?.let(records::add)
+            txtRecord()?.let(records::add)
+        }
+        if ("host" in answerNames) aRecord()?.let(records::add)
+        if (records.isEmpty()) return null
+
+        val body = ByteArrayOutputStream()
+        records.forEach(body::write)
+        val out = ByteArrayOutputStream()
+        writeHeader(out, answers = records.size)
+        out.write(body.toByteArray())
+        return out.toByteArray()
+    }
+
+    // ------------------------------------------------------------------
+    // Records
+    // ------------------------------------------------------------------
+
+    private fun serviceInstance(): String = "$instanceName._http._tcp.local."
+
+    private fun ptrRecord(): ByteArray? {
+        val rdata = encodeName(serviceInstance()) ?: return null
+        return record("_http._tcp.local.", TYPE_PTR, CLASS_IN, TTL, rdata)
+    }
+
+    private fun srvRecord(): ByteArray? {
+        val host = hostname().lowercase()
+        val body = ByteArrayOutputStream()
+        writeU16(body, 0) // priority
+        writeU16(body, 0) // weight
+        writeU16(body, port)
+        body.write(encodeName("$host.local.") ?: return null)
+        return record(serviceInstance(), TYPE_SRV, CLASS_IN or 0x8000, TTL, body.toByteArray())
+    }
+
+    private fun aRecord(): ByteArray? {
+        val ip = ipAddress ?: return null
+        val octets = ip.split(".").mapNotNull { it.toIntOrNull() }.filter { it in 0..255 }
+        if (octets.size != 4) return null
+        val host = hostname().lowercase()
+        return record("$host.local.", TYPE_A, CLASS_IN or 0x8000, TTL, byteArrayOf(
+            octets[0].toByte(), octets[1].toByte(), octets[2].toByte(), octets[3].toByte()
+        ))
+    }
+
+    private fun txtRecord(): ByteArray? {
+        val fields = listOf("path=/")
+        val body = ByteArrayOutputStream()
+        fields.forEach { field ->
+            val b = field.toByteArray(Charsets.UTF_8)
+            if (b.size > 255) return null
+            body.write(b.size)
+            body.write(b)
+        }
+        return record(serviceInstance(), TYPE_TXT, CLASS_IN, TTL, body.toByteArray())
+    }
+
+    private fun record(name: String, type: Int, cls: Int, ttl: Long, rdata: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream()
+        out.write(encodeName(name) ?: byteArrayOf(0))
+        writeU16(out, type)
+        writeU16(out, cls)
+        writeU32(out, ttl)
+        writeU16(out, rdata.size)
+        out.write(rdata)
+        return out.toByteArray()
+    }
+
+    // ------------------------------------------------------------------
+    // DNS helpers
+    // ------------------------------------------------------------------
+
+    private fun writeHeader(out: ByteArrayOutputStream, answers: Int) {
+        writeU16(out, 0)                       // ID
+        writeU16(out, 0x8400)                  // QR=1, AA=1
+        writeU16(out, 0)                       // QDCOUNT
+        writeU16(out, answers)                 // ANCOUNT
+        writeU16(out, 0)                       // NSCOUNT
+        writeU16(out, 0)                       // ARCOUNT
+    }
+
+    private fun writeU16(out: ByteArrayOutputStream, value: Int) {
+        out.write((value ushr 8) and 0xFF)
+        out.write(value and 0xFF)
+    }
+
+    private fun writeU32(out: ByteArrayOutputStream, value: Long) {
+        out.write(((value ushr 24) and 0xFF).toInt())
+        out.write(((value ushr 16) and 0xFF).toInt())
+        out.write(((value ushr 8) and 0xFF).toInt())
+        out.write((value and 0xFF).toInt())
+    }
+
+    /** Encodes a dotted name like `a._http._tcp.local.` into DNS labels. */
+    private fun encodeName(name: String): ByteArray? {
+        val labels = name.trimEnd('.').split(".")
+        if (labels.isEmpty()) return null
+        val out = ByteArrayOutputStream()
+        labels.forEach { label ->
+            val b = label.toByteArray(Charsets.UTF_8)
+            if (b.isEmpty() || b.size > MAX_LABEL) return null
+            out.write(b.size)
+            out.write(b)
+        }
+        out.write(0)
+        return out.toByteArray()
+    }
+
+    // ------------------------------------------------------------------
+    // Network
+    // ------------------------------------------------------------------
+
+    /**
+     * Resolves the multicast interface together with its usable LAN IPv4 so the
+     * interface the socket joins is the same one whose address is published in
+     * the A record. Returns the interface (or null to fall back to the default)
+     * and its non-loopback, non-link-local IPv4 (or null when none exists).
+     */
+    private fun resolveIfaceAndIp(): Pair<NetworkInterface, String>? {
+        return try {
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+            for (ni in java.util.Collections.list(interfaces)) {
+                if (!ni.isUp || ni.isLoopback) continue
+                for (addr in java.util.Collections.list(ni.inetAddresses)) {
+                    if (addr is Inet4Address && !addr.isLoopbackAddress && !addr.isLinkLocalAddress) {
+                        return ni to addr.hostAddress
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** DNS-safe lowercase hostname from the configured device name. */
+    private fun sanitizeHost(raw: String): String {
+        var host = raw.trim().lowercase()
+        host = host.replace(Regex("[^a-z0-9-]"), "-")
+        host = host.replace(Regex("-+"), "-").trim('-')
+        if (host.isBlank()) host = "screentamer"
+        return host.take(MAX_LABEL)
+    }
+
+    private fun buildResponseSummary(data: ByteArray, length: Int): String {
+        try {
+            if (length < 12) return ""
+            val qd = ((data[4].toInt() and 0xFF) shl 8) or (data[5].toInt() and 0xFF)
+            var pos = 12
+            val names = mutableListOf<String>()
+            repeat(qd) {
+                val (name, next) = readName(data, pos) ?: return@repeat
+                names.add(name)
+                pos = next + 4
+            }
+            return names.joinToString(", ")
+        } catch (e: Exception) {
+            return ""
+        }
     }
 }

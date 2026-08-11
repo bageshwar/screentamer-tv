@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import com.screentamer.agent.core.AdbClient
@@ -49,6 +50,7 @@ class AgentService : Service() {
         private const val NOTIF_ID = 1
         private const val TRACK_INTERVAL_MS = 30_000L
         private const val RETENTION_DAYS = 90
+        private const val PRUNE_INTERVAL_MS = 12 * 60 * 60 * 1000L
 
         const val ACTION_START = "com.screentamer.agent.START"
         const val ACTION_STOP = "com.screentamer.agent.STOP"
@@ -95,6 +97,7 @@ class AgentService : Service() {
     private var locked: Boolean = false
 
     private var lastUpdateCheckTime = 0L
+    private var lastPruneTime = 0L
 
     private val deviceId: String
         get() = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
@@ -122,6 +125,13 @@ class AgentService : Service() {
         store = DeviceStore(File(filesDir, "data"))
         store.bumpServiceStart()
         store.sweep(RETENTION_DAYS)
+        // Fire OS reports phantom full-day usage for uninstalled apps (a single
+        // day can balloon past 96h). Drop those from persisted history now, then
+        // keep pruning every PRUNE_INTERVAL_MS in the tick loop so packages
+        // uninstalled mid-day don't linger in history until the next restart.
+        // Runs inside startLoop's coroutine before the first tick so cleanup
+        // never races the initial recordUsage write.
+        lastPruneTime = SystemClock.elapsedRealtime()
 
         server = EmbeddedServer(Prefs.serverPort(this), object : EmbeddedServer.Handler {
             override fun login(password: String): Boolean {
@@ -195,10 +205,10 @@ class AgentService : Service() {
                 }
             }
         })
-        server.start()
-        Log.i(TAG, "embedded server on :${Prefs.serverPort(this)}")
         mdns = MdnsAdvertiser(this)
         mdns.start(Prefs.serverPort(this), "ScreenTamer ${Prefs.deviceName(this)}")
+        server.start()
+        Log.i(TAG, "embedded server on :${Prefs.serverPort(this)}")
 
         socket = AgentSocket(this, object : AgentSocket.Listener {
             override fun onConnected() {
@@ -256,6 +266,12 @@ class AgentService : Service() {
             .put("health", store.health())
             .put("serverPort", Prefs.serverPort(this))
             .put("iconEndpoint", true)
+            .put("mdns", JSONObject()
+                .put("hostname", mdns.hostname())
+                .put("collision", mdns.collision())
+                .put("collisionHost", mdns.collisionHost() ?: JSONObject.NULL)
+                .put("collisionPeer", mdns.collisionPeer() ?: JSONObject.NULL)
+            )
             .put("update", JSONObject()
                 .put("hasUpdate", com.screentamer.agent.core.UpdateManager.hasUpdate)
                 .put("latestVersion", com.screentamer.agent.core.UpdateManager.latestVersionName)
@@ -313,6 +329,9 @@ class AgentService : Service() {
             Log.e(TAG, "loop crashed", e)
             store.noteTickFailure(e)
         }) {
+            // Serialize with tick writes: prune before the first recordUsage so
+            // the startup cleanup can never overwrite a fresher usage write.
+            store.pruneUninstalled(tracker.installedPackages())
             while (isActive) {
                 tick()
                 delay(TRACK_INTERVAL_MS)
@@ -326,16 +345,25 @@ class AgentService : Service() {
             val apps = snap.totals
             val totalMs = apps.values.sum()
             currentApp = tracker.foregroundApp()
-            Log.i(TAG, "tick: totalMs=$totalMs apps=${apps.size} delta=${snap.delta?.size ?: 0} current=${currentApp?.let { KnownApps.displayName(it) } ?: "—"} locked=$locked")
+            Log.i(TAG, "tick: totalMs=$totalMs apps=${apps.size} delta=${snap.delta?.size ?: 0} authoritative=${snap.authoritative} current=${currentApp?.let { KnownApps.displayName(it) } ?: "—"} locked=$locked")
 
-            // 1. Enforcement
-            enforce(policy, apps, totalMs)
+            // 1. Enforcement (only on an authoritative observation; a failed
+            //    query must not count toward a limit or trigger a lock).
+            if (snap.authoritative) enforce(policy, apps, totalMs)
 
             // 2. Persist on-device (hourly buckets: attribute the delta since
-            // the last tick to the hour it was snapshotted in).
-            val hourly = if (snap.delta.isNullOrEmpty()) emptyMap() else mapOf(snap.hour.toString() to snap.delta)
-            store.recordUsage(snap.date, apps, hourly)
+            //    the last tick to the hour it was snapshotted in). Non-
+            //    authoritative snapshots keep existing totals (no false wipe).
+            val hourly = if (snap.delta.isNullOrEmpty() || !snap.authoritative) emptyMap() else mapOf(snap.hour.toString() to snap.delta)
+            store.recordUsage(snap.date, apps, hourly, snap.authoritative)
             store.noteTick()
+
+            // Periodically drop history for packages uninstalled since the last
+            // prune (Fire OS keeps reporting phantom usage for them).
+            if (SystemClock.elapsedRealtime() - lastPruneTime >= PRUNE_INTERVAL_MS) {
+                lastPruneTime = SystemClock.elapsedRealtime()
+                store.pruneUninstalled(tracker.installedPackages())
+            }
 
             // 3. Relay push (optional; sends the day's full hourly map so a
             // reconnect never loses earlier hours).
