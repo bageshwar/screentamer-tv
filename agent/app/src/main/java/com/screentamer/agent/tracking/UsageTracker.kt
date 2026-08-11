@@ -17,6 +17,7 @@ class UsageTracker(private val context: Context) {
 
     companion object {
         private const val TAG = "ScreenTamer/UsageTracker"
+        private const val INSTALLED_CACHE_MS = 5 * 60 * 1000L
 
         fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
@@ -52,6 +53,37 @@ class UsageTracker(private val context: Context) {
     /** Date ([snapshot] day) the [lastTotals] baseline belongs to. */
     private var lastSnapshotDate: String? = null
 
+    /** Cached set of currently-installed package names (see [installedPackages]). */
+    private var installedCache: Set<String>? = null
+    private var installedCacheAt = 0L
+
+    /**
+     * Packages actually installed on the device, cached for 5 minutes.
+     *
+     * Fire OS keeps returning phantom UsageStats entries — including a full
+     * day of "foreground" time — for apps that were uninstalled (e.g. the
+     * long-defunct Sling Vue, HBO Now and old Prime Video packages on this TV
+     * report exactly 86_399_999 ms/day, which blows the daily total past 96h
+     * for a single calendar day). Only packages that still exist may count.
+     */
+    fun installedPackages(): Set<String> {
+        val now = System.currentTimeMillis()
+        installedCache?.let {
+            if (now - installedCacheAt < INSTALLED_CACHE_MS) return it
+        }
+        val set = try {
+            context.packageManager.getInstalledPackages(0)
+                .map { it.packageName }
+                .toSet()
+        } catch (e: Exception) {
+            Log.w(TAG, "could not enumerate installed packages: ${e.message}")
+            installedCache ?: emptySet()
+        }
+        installedCache = set
+        installedCacheAt = now
+        return set
+    }
+
     /** Millis since midnight that each app has been in the foreground today. */
     fun usageToday(now: Date = Date()): Map<String, Long> {
         return try {
@@ -64,10 +96,15 @@ class UsageTracker(private val context: Context) {
             val dayStart = cal.timeInMillis
 
             val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, dayStart, now.time)
+            val installed = installedPackages()
             val tracked = stats
-                .filter { it.totalTimeInForeground > 0 && !KnownApps.isSystemish(it.packageName) }
+                .filter {
+                    it.totalTimeInForeground > 0 &&
+                        !KnownApps.isSystemish(it.packageName) &&
+                        it.packageName in installed
+                }
                 .associate { it.packageName to it.totalTimeInForeground }
-            Log.d(TAG, "usage today: ${tracked.size} apps, ${tracked.values.sum()}ms")
+            Log.d(TAG, "usage today: ${tracked.size} apps, ${tracked.values.sum()}ms (of ${stats.size} stats entries)")
             tracked
         } catch (e: SecurityException) {
             // PACKAGE_USAGE_STATS not granted via adb yet.
@@ -125,7 +162,7 @@ class UsageTracker(private val context: Context) {
                     last = event.packageName
                 }
             }
-            last?.takeIf { !KnownApps.isSystemish(it) }
+            last?.takeIf { !KnownApps.isSystemish(it) && it in installedPackages() }
         } catch (e: SecurityException) {
             Log.w(TAG, "PACKAGE_USAGE_STATS not granted — cannot detect foreground app")
             null

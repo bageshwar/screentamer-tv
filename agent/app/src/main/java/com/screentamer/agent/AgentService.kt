@@ -49,6 +49,7 @@ class AgentService : Service() {
         private const val NOTIF_ID = 1
         private const val TRACK_INTERVAL_MS = 30_000L
         private const val RETENTION_DAYS = 90
+        private const val PRUNE_INTERVAL_MS = 12 * 60 * 60 * 1000L
 
         const val ACTION_START = "com.screentamer.agent.START"
         const val ACTION_STOP = "com.screentamer.agent.STOP"
@@ -95,6 +96,7 @@ class AgentService : Service() {
     private var locked: Boolean = false
 
     private var lastUpdateCheckTime = 0L
+    private var lastPruneTime = 0L
 
     private val deviceId: String
         get() = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
@@ -122,6 +124,14 @@ class AgentService : Service() {
         store = DeviceStore(File(filesDir, "data"))
         store.bumpServiceStart()
         store.sweep(RETENTION_DAYS)
+        // Fire OS reports phantom full-day usage for uninstalled apps (a single
+        // day can balloon past 96h). Drop those from persisted history now, then
+        // keep pruning every PRUNE_INTERVAL_MS in the tick loop so packages
+        // uninstalled mid-day don't linger in history until the next restart.
+        scope.launch {
+            lastPruneTime = System.currentTimeMillis()
+            store.pruneUninstalled(tracker.installedPackages())
+        }
 
         server = EmbeddedServer(Prefs.serverPort(this), object : EmbeddedServer.Handler {
             override fun login(password: String): Boolean {
@@ -336,6 +346,13 @@ class AgentService : Service() {
             val hourly = if (snap.delta.isNullOrEmpty()) emptyMap() else mapOf(snap.hour.toString() to snap.delta)
             store.recordUsage(snap.date, apps, hourly)
             store.noteTick()
+
+            // Periodically drop history for packages uninstalled since the last
+            // prune (Fire OS keeps reporting phantom usage for them).
+            if (System.currentTimeMillis() - lastPruneTime >= PRUNE_INTERVAL_MS) {
+                lastPruneTime = System.currentTimeMillis()
+                store.pruneUninstalled(tracker.installedPackages())
+            }
 
             // 3. Relay push (optional; sends the day's full hourly map so a
             // reconnect never loses earlier hours).

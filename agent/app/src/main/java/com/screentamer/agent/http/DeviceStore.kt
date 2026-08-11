@@ -59,6 +59,11 @@ class DeviceStore(private val dataDir: File) {
      */
     fun recordUsage(date: String, apps: Map<String, Long>, hourly: Map<String, Map<String, Long>>? = null): JSONObject {
         val bucket = readDay(date)
+        // apps holds the cumulative per-package totals since midnight, so it is
+        // authoritative: drop any leftover top-level entries for packages the
+        // tracker no longer reports (e.g. phantom usage for uninstalled apps).
+        val stale = bucket.keys().asSequence().toList().filter { it != HOURLY_KEY && it !in apps }
+        for (k in stale) bucket.remove(k)
         for ((pkg, ms) in apps) {
             if (ms >= 0 && bucket.optLong(pkg) != ms) bucket.put(pkg, ms)
         }
@@ -122,6 +127,59 @@ class DeviceStore(private val dataDir: File) {
             }
         }
         if (deleted > 0) Log.i(TAG, "swept $deleted history files older than ${retentionDays}d")
+    }
+
+    /**
+     * Remove history entries for packages that are no longer installed. Fire OS
+     * keeps reporting phantom daily usage (a full 24h/day) for uninstalled apps,
+     * which inflates a single day's total past 96h. Called at service start to
+     * clean up whatever the older agent already persisted. Returns files touched.
+     */
+    fun pruneUninstalled(installed: Set<String>): Int {
+        if (installed.isEmpty()) return 0
+        var touched = 0
+        historyDir.listFiles()?.forEach { f ->
+            if (!f.isFile) return@forEach
+            try {
+                val bucket = JSONObject(f.readText())
+                if (pruneBucket(bucket, installed)) {
+                    val tmp = File(f.parentFile, f.name + ".tmp")
+                    tmp.writeText(bucket.toString())
+                    tmp.renameTo(f)
+                    touched++
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "could not prune ${f.name}: ${e.message}")
+            }
+        }
+        if (touched > 0) Log.i(TAG, "pruned uninstalled packages from $touched history file(s)")
+        return touched
+    }
+
+    /** Remove top-level and hourly entries whose package is not installed. */
+    private fun pruneBucket(bucket: JSONObject, installed: Set<String>): Boolean {
+        var changed = false
+        val top = bucket.keys().asSequence().toList()
+        for (k in top) {
+            if (k != HOURLY_KEY && k !in installed) {
+                bucket.remove(k)
+                changed = true
+            }
+        }
+        val dayHourly = bucket.optJSONObject(HOURLY_KEY) ?: return changed
+        val hours = dayHourly.keys().asSequence().toList()
+        for (h in hours) {
+            val slot = dayHourly.optJSONObject(h) ?: continue
+            val pkgs = slot.keys().asSequence().toList()
+            for (p in pkgs) {
+                if (p !in installed) {
+                    slot.remove(p)
+                    changed = true
+                }
+            }
+            if (slot.length() == 0) dayHourly.remove(h)
+        }
+        return changed
     }
 
     // ------------------------------------------------------------------
