@@ -20,7 +20,7 @@ The overlay auto-releases when the curfew ends or a parent unlocks.
 
 ## Settings you can edit
 
-- **Daily limit** — maximum screen time per app per day.
+- **Daily limit** — maximum total screen time across apps per day.
 - **Curfew window** — a start/stop window that wraps midnight; active while
   it's inside the window.
 - **Blacklist** — apps force-stopped on launch; add by typing a package name

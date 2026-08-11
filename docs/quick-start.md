@@ -13,6 +13,7 @@ Get one ScreenTamer agent running on a single Fire TV in a few minutes.
 cd agent
 ./gradlew assembleDebug
 # -> agent/app/build/outputs/apk/debug/app-debug.apk
+cd ..
 ```
 
 Requires JDK 17+. On macOS with Android Studio:

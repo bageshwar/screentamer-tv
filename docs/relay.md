@@ -39,3 +39,10 @@ records over a WebSocket (`ws://host:3000/ws`), gated on the pairing token.
 
 With no relay configured the agent is fully self-sufficient and never phones
 home. Set the relay URL only if you want remote/multi-TV aggregation.
+
+## Network exposure
+
+The relay is plain HTTP/`ws://` — pairing tokens and relay traffic are
+unencrypted. Keep the relay on a **trusted LAN only**, or reach it exclusively
+through a **VPN or SSH tunnel**. Do not expose the dashboard directly to the
+public internet. See [Security](security.html) for the full threat model.
