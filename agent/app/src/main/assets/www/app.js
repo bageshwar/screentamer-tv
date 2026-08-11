@@ -508,7 +508,9 @@ function drawDailyChart(days) {
     }
     ctx.fillStyle = i % 2 === 0 ? '#8b93a5' : '#5c6478';
     const lbl = new Date(`${d.date}T00:00:00`).toLocaleDateString([], { weekday: 'short' });
-    if (i % stepLabel === 0) {
+    // On phones every other interior label is enough, but always keep the
+    // first and last (today) weekday visible so the endpoints aren't lost.
+    if (i % stepLabel === 0 || i === days.length - 1) {
       ctx.save();
       ctx.translate(x + barW / 2, padT + plotH + 12);
       ctx.rotate(-Math.PI / 5);
