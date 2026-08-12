@@ -137,7 +137,7 @@ class AgentService : Service() {
             override fun login(password: String): Boolean {
                 val ok = password == Prefs.parentPassword(this@AgentService)
                 if (!ok) {
-                    Log.w(TAG, "dashboard login rejected (password=${password.ifBlank { "<empty>" }} len=${password.length})")
+                    Log.w(TAG, "dashboard login rejected (empty=${password.isBlank()})")
                     if (password.isNotBlank()) log("failed dashboard login attempt")
                 }
                 return ok

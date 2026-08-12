@@ -4,6 +4,9 @@ Self-hosted parental control and screen-time monitoring for Amazon Fire TV (Fire
 
 > **Design essence:** the agent is the control plane. It embeds the dashboard server, persists its own history/logs/health on-device, and only talks to the outside world when you explicitly point it at an optional relay.
 
+> **Help documentation:** the same guides are published as a site at
+> [bageshwar.github.io/screentamer-tv/](https://bageshwar.github.io/screentamer-tv/).
+
 ---
 
 ## Table of contents
