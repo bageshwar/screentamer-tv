@@ -527,9 +527,9 @@ body.tv-mode .tl-block { border-radius: 5px; }
 body.tv-mode .tl-empty { font-size: 19px; }
 
 body.tv-mode .controls { gap: 14px; }
-body.tv-mode .controls .btn { min-width: 170px; }
+body.tv-mode .controls .btn { min-width: 156px; }
 body.tv-mode .stop-row select { max-width: 340px; }
-body.tv-mode .btn { font-size: 20px; padding: 18px 28px; min-height: 72px; border-radius: 12px; }
+body.tv-mode .btn { font-size: 20px; padding: 16px 24px; min-height: 72px; border-radius: 12px; }
 body.tv-mode select.btn { min-height: 60px; }
 body.tv-mode select.btn option { font-size: 22px; padding: 10px 14px; }
 body.tv-mode .field { font-size: 20px; }
@@ -559,7 +559,7 @@ body.tv-mode button:focus,
 body.tv-mode select:focus,
 body.tv-mode input:focus {
   outline: 5px solid var(--accent-2);
-  outline-offset: 4px;
+  outline-offset: 3px;
   box-shadow: 0 0 30px rgba(94, 200, 229, 0.55);
 }
 body.tv-mode .btn,
@@ -570,7 +570,7 @@ body.tv-mode .chip.quick {
 }
 body.tv-mode button:focus,
 body.tv-mode select:focus {
-  transform: scale(1.08);
+  transform: scale(1.04);
 }
 body.tv-mode input:focus {
   transform: scale(1.03);
