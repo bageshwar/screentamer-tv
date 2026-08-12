@@ -1,3 +1,8 @@
+---
+layout: default
+title: Fire TV setup runbook
+---
+
 # Fire TV — Real-Device Setup Runbook
 
 Steps to validate ScreenTamer on real Fire TV hardware, plus a growing

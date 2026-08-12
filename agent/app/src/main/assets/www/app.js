@@ -380,7 +380,7 @@ function renderStatus(prefix, device) {
   $(`#${prefix}Dot`).className = `dot ${online ? 'on' : 'off'}`;
   $(`#${prefix}Name`).textContent = device ? device.name : '—';
   $(`#${prefix}Meta`).textContent = device
-    ? `${device.model || 'Fire TV'} · Fire OS ${device.version || '?'} · last seen ${fmtTime(device.lastSeen)}`
+    ? `${device.model || 'Fire TV'} · ScreenTamer ${device.appVersion || '?'} · Fire OS ${device.version || '?'} · last seen ${fmtTime(device.lastSeen)}`
     : '—';
 
   const now = $('#nowPlaying');
@@ -450,10 +450,15 @@ function drawDailyChart(days) {
   const padL = 44;
   const padR = 8;
   const padT = 18;
-  const padB = 26;
+  // Rotated weekday labels need vertical room so they don't clip off-canvas;
+  // phones get a little more because the canvas is narrower.
+  const padB = window.innerWidth < 700 ? 34 : 26;
   const plotW = width - padL - padR;
   const plotH = height - padT - padB;
   const max = Math.max(...days.map((d) => d.totalMs), 1);
+  // On phones the 14 weekday labels are too dense when rotated; every other
+  // label is enough and keeps "Wed" / "Thu" reading without overlap.
+  const stepLabel = window.innerWidth < 700 ? 2 : 1;
 
   // Y gridlines (0 / 50% / 100%).
   const baseFont = isTv ? 18 : window.innerWidth < 700 ? 12 : 11;
@@ -503,12 +508,16 @@ function drawDailyChart(days) {
     }
     ctx.fillStyle = i % 2 === 0 ? '#8b93a5' : '#5c6478';
     const lbl = new Date(`${d.date}T00:00:00`).toLocaleDateString([], { weekday: 'short' });
-    ctx.save();
-    ctx.translate(x + barW / 2, padT + plotH + 12);
-    ctx.rotate(-Math.PI / 5);
-    ctx.textAlign = 'right';
-    ctx.fillText(lbl, 0, 0);
-    ctx.restore();
+    // On phones every other interior label is enough, but always keep the
+    // first and last (today) weekday visible so the endpoints aren't lost.
+    if (i % stepLabel === 0 || i === days.length - 1) {
+      ctx.save();
+      ctx.translate(x + barW / 2, padT + plotH + 12);
+      ctx.rotate(-Math.PI / 5);
+      ctx.textAlign = 'right';
+      ctx.fillText(lbl, 0, 0);
+      ctx.restore();
+    }
 
     // Click to inspect this day.
     canvas._slots = canvas._slots || [];
@@ -838,6 +847,7 @@ function renderSettings() {
   $('#deviceInfo').innerHTML = `
     <div><span class="label">Device ID</span> ${escapeHtml(device.id)}</div>
     <div><span class="label">Model</span> ${escapeHtml(device.model || '?')}</div>
+    <div><span class="label">ScreenTamer</span> v${escapeHtml(device.appVersion || '?')}</div>
     <div><span class="label">Fire OS</span> ${escapeHtml(device.version || '?')}</div>
     <div><span class="label">Last seen</span> ${fmtDateTime(device.lastSeen)}</div>
     ${device.serverPort ? `<div><span class="label">Dashboard port</span> ${escapeHtml(device.serverPort)}</div>` : ''}`;

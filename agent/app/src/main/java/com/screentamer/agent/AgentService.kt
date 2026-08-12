@@ -137,7 +137,7 @@ class AgentService : Service() {
             override fun login(password: String): Boolean {
                 val ok = password == Prefs.parentPassword(this@AgentService)
                 if (!ok) {
-                    Log.w(TAG, "dashboard login rejected (password=${password.ifBlank { "<empty>" }} len=${password.length})")
+                    Log.w(TAG, "dashboard login rejected (empty=${password.isBlank()})")
                     if (password.isNotBlank()) log("failed dashboard login attempt")
                 }
                 return ok
@@ -256,6 +256,7 @@ class AgentService : Service() {
             .put("name", Prefs.deviceName(this))
             .put("model", Build.MODEL)
             .put("version", Build.VERSION.RELEASE)
+            .put("appVersion", BuildConfig.VERSION_NAME)
             .put("online", true)
             .put("lastSeen", System.currentTimeMillis())
             .put("currentApp", currentApp ?: JSONObject.NULL)
@@ -441,6 +442,7 @@ class AgentService : Service() {
                 name = Prefs.deviceName(this),
                 model = Build.MODEL,
                 version = Build.VERSION.RELEASE,
+                appVersion = BuildConfig.VERSION_NAME,
             )
         )
         Log.i(TAG, "hello sent (name=${Prefs.deviceName(this)}, token=${if (Prefs.pairingToken(this).isBlank()) "blank" else "set"})")

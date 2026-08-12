@@ -143,6 +143,12 @@ class EmbeddedServer(
         if (method == "GET" && (path == "/" || path == "/index.html")) asset("index.html")
         else if (method == "GET" && pathLower.startsWith("/static/")) asset(path.substringAfter("/static/"))
 
+        // Browsers ask for /favicon.ico by default; point them at the SVG like the relay does
+        else if (method == "GET" && path == "/favicon.ico") {
+            status = 302
+            out.write("HTTP/1.1 302 Found\r\nLocation: /static/favicon.svg\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
+        }
+
         // REST API
         else when {
             method == "GET" && path == "/api/icon" -> {

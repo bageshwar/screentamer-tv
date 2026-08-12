@@ -32,7 +32,7 @@
     <string name="hint_password">password parents use in the dashboard</string>
     <string name="hint_dash_port">8080</string>
     <string name="status_default">Agent service: stopped</string>
-    <string name="about_text">ScreenTamer is a parental-control agent for your own Fire TV devices.\n\nThe agent runs as a foreground service with three guard rails keeping it alive: a persistent notification, a boot receiver, and an accessibility watchdog. It tracks screen time on-device, enforces daily limits / curfews / blacklists, and serves a parent dashboard over HTTP on your home network (or via the optional relay server).\n\nUse Test Local ADB to verify the agent can control the TV. The setup script grants the hidden permissions Fire OS hides from the UI.\n\nWelcome to Version 1.0.0!</string>
+    <string name="about_text">ScreenTamer is a parental-control agent for your own Fire TV devices.\n\nThe agent runs as a foreground service with three guard rails keeping it alive: a persistent notification, a boot receiver, and an accessibility watchdog. It tracks screen time on-device, enforces daily limits / curfews / blacklists, and serves a parent dashboard over HTTP on your home network (or via the optional relay server).\n\nUse Test Local ADB to verify the agent can control the TV. The setup script grants the hidden permissions Fire OS hides from the UI.</string>
 
     <string name="overlay_title">ScreenTamer</string>
     <string name="overlay_locked">This screen is locked by ScreenTamer</string>
