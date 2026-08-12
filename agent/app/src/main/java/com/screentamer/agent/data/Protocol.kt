@@ -26,7 +26,7 @@ object Protocol {
     const val CMD_UNLOCK = "unlock"
     const val CMD_CHECK_UPDATE = "checkUpdate"
 
-    fun hello(token: String, deviceId: String, name: String, model: String, version: String): JSONObject =
+    fun hello(token: String, deviceId: String, name: String, model: String, version: String, appVersion: String? = null): JSONObject =
         JSONObject()
             .put("type", TYPE_HELLO)
             .put("role", "agent")
@@ -35,6 +35,7 @@ object Protocol {
             .put("name", name)
             .put("model", model)
             .put("version", version)
+            .put("appVersion", appVersion ?: "")
 
     fun usage(
         deviceId: String,

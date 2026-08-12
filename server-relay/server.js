@@ -249,6 +249,7 @@ wss.on('connection', (ws) => {
           device.name = msg.name || device.name;
           device.model = msg.model || device.model;
           device.version = msg.version || device.version;
+          if (msg.appVersion) device.appVersion = msg.appVersion;
           device.online = true;
           device.lastSeen = Date.now();
           device.policy = device.policy || { ...state.defaultPolicy } || P.DEFAULT_POLICY();
@@ -354,6 +355,7 @@ function publicState() {
       name: device.name,
       model: device.model,
       version: device.version,
+      appVersion: device.appVersion,
       online: device.online,
       lastSeen: device.lastSeen,
       currentApp: device.currentApp,

@@ -380,7 +380,7 @@ function renderStatus(prefix, device) {
   $(`#${prefix}Dot`).className = `dot ${online ? 'on' : 'off'}`;
   $(`#${prefix}Name`).textContent = device ? device.name : '—';
   $(`#${prefix}Meta`).textContent = device
-    ? `${device.model || 'Fire TV'} · Fire OS ${device.version || '?'} · last seen ${fmtTime(device.lastSeen)}`
+    ? `${device.model || 'Fire TV'} · ScreenTamer ${device.appVersion || '?'} · Fire OS ${device.version || '?'} · last seen ${fmtTime(device.lastSeen)}`
     : '—';
 
   const now = $('#nowPlaying');
@@ -838,6 +838,7 @@ function renderSettings() {
   $('#deviceInfo').innerHTML = `
     <div><span class="label">Device ID</span> ${escapeHtml(device.id)}</div>
     <div><span class="label">Model</span> ${escapeHtml(device.model || '?')}</div>
+    <div><span class="label">ScreenTamer</span> v${escapeHtml(device.appVersion || '?')}</div>
     <div><span class="label">Fire OS</span> ${escapeHtml(device.version || '?')}</div>
     <div><span class="label">Last seen</span> ${fmtDateTime(device.lastSeen)}</div>
     ${device.serverPort ? `<div><span class="label">Dashboard port</span> ${escapeHtml(device.serverPort)}</div>` : ''}`;

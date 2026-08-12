@@ -256,6 +256,7 @@ class AgentService : Service() {
             .put("name", Prefs.deviceName(this))
             .put("model", Build.MODEL)
             .put("version", Build.VERSION.RELEASE)
+            .put("appVersion", BuildConfig.VERSION_NAME)
             .put("online", true)
             .put("lastSeen", System.currentTimeMillis())
             .put("currentApp", currentApp ?: JSONObject.NULL)
@@ -441,6 +442,7 @@ class AgentService : Service() {
                 name = Prefs.deviceName(this),
                 model = Build.MODEL,
                 version = Build.VERSION.RELEASE,
+                appVersion = BuildConfig.VERSION_NAME,
             )
         )
         Log.i(TAG, "hello sent (name=${Prefs.deviceName(this)}, token=${if (Prefs.pairingToken(this).isBlank()) "blank" else "set"})")
