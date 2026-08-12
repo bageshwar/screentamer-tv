@@ -13,7 +13,7 @@ TV itself** — no server box, no cloud, no subscription.
 
 | Page | What it covers |
 | --- | --- |
-| [Quick start](quick-start.html) | Build, sideload, grant permissions, first run |
+| [Quick start](quick-start.html) | Sideload a release (or build from source), grant permissions, first run |
 | [Fire TV setup runbook](FIRE-TV-SETUP.html) | Real-device validation, permissions, FAQ & gotchas |
 | [Using the dashboard](dashboard.html) | Report / Activity / Settings tabs, app icons, device discovery |
 | [Relay for multiple TVs](relay.html) | Optional multi-TV aggregation with `server-relay/` |

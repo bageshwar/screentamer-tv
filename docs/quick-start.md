@@ -7,20 +7,32 @@ title: Quick start
 
 Get one ScreenTamer agent running on a single Fire TV in a few minutes.
 
-## 1. Build the agent APK
+## 1. Get the APK
+
+### Easy: download a release
+
+Grab the latest prebuilt APK from the **Sideload release**:
+
+- **<https://tinyurl.com/screentamer>** (– or visit
+  [github.com/bageshwar/screentamer-tv/releases](https://github.com/bageshwar/screentamer-tv/releases)
+  and download the `screentamer-agent-*.apk` asset)
+
+No Android SDK or build tooling required — anyone can sideload this.
+
+### Alternative: build it yourself
+
+Want to build from source instead? Requires JDK 17+. On macOS with
+Android Studio:
 
 ```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 cd agent
 ./gradlew assembleDebug
 # -> agent/app/build/outputs/apk/debug/app-debug.apk
 cd ..
 ```
 
-Requires JDK 17+. On macOS with Android Studio:
-
-```bash
-export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-```
+Either way you now have an APK to sideload — continue with step 2.
 
 ## 2. Sideload + grant permissions
 
@@ -29,7 +41,7 @@ and **Apps from Unknown Sources ON**.
 
 ```bash
 adb connect <fire-tv-ip>:5555
-adb install agent/app/build/outputs/apk/debug/app-debug.apk
+adb install <path-to>/screentamer-agent.apk
 ./scripts/setup-firestick.sh <fire-tv-ip>
 ```
 
