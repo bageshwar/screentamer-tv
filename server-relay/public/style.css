@@ -395,6 +395,15 @@ input::placeholder { color: var(--muted-strong); }
 @media (max-width: 700px) {
   body { font-size: 15px; }
 
+  /* Secondary text stays legible on phones: bump sizes and use the stronger
+     muted tone so meta lines / hints don't drop below comfortable contrast. */
+  .muted { color: var(--muted-strong); }
+  .report-head .muted { font-size: 14px; }
+  .status-meta { font-size: 13px; }
+  .chart-hint { font-size: 13px; }
+  .footer { font-size: 13px; }
+  .badge { font-size: 13px; padding: 4px 12px; }
+
   .topbar { flex-wrap: wrap; padding: 10px 14px; gap: 10px; }
   .brand h1 { font-size: 17px; }
   .brand .muted { display: none; }
@@ -405,20 +414,22 @@ input::placeholder { color: var(--muted-strong); }
 
   .view { padding: 14px; }
   .report { gap: 12px; }
+  .card { padding: 16px; }
 
   .report-head h2 { font-size: 19px; }
   .day-nav .btn { min-width: 48px; min-height: 48px; padding: 0 14px; }
 
-  .status-card { padding: 14px 16px; gap: 10px; }
+  .status-card { padding: 16px; gap: 12px; }
   .status-card .dot { width: 12px; height: 12px; }
   .status-name { font-size: 17px; }
   .status-meta { font-size: 12px; }
   .now-playing { padding-left: 0; margin-left: 0; text-align: left; }
   .now-playing strong { font-size: 14px; }
 
-  .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .stat { padding: 12px; }
-  .stat-value { font-size: 22px; }
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stat { padding: 14px; }
+  .stat-value { font-size: 24px; }
+  .stat-label { font-size: 12px; }
 
   .app-row { gap: 8px; }
   .app-name { width: auto; flex: 1; }
